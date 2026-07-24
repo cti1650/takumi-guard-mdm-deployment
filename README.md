@@ -55,75 +55,17 @@ npm / pip が未インストールの場合、そのパッケージマネージ�
 
 ---
 
-## Intune (Windows)
+## MDM別セットアップ
 
-### 検出スクリプト
+各MDMの検出スクリプト・設定投入スクリプトと詳細な登録手順は、媒体別ドキュメントを参照してください。
 
-`intune/detection/detect-takumi-guard.ps1`
+| MDM | 対象OS | ドキュメント | 主なファイル |
+|-----|--------|--------------|--------------|
+| **Intune** | Windows | [docs/intune.md](docs/intune.md) | [detect](intune/detection/detect-takumi-guard.ps1) / [install](intune/remediation/install-takumi-guard.ps1) |
+| **Jamf Pro** | macOS | [docs/jamf-pro.md](docs/jamf-pro.md) | [status](jamf-pro/extension-attributes/takumi-guard-status.sh) / [install](jamf-pro/policies/install-takumi-guard.sh) |
+| **Iru (旧Kandji)** | macOS/Windows | [docs/iru.md](docs/iru.md) | [detect](iru/custom-scripts/detect-takumi-guard.sh) / [macOS](iru/custom-scripts/install-takumi-guard-macos.sh) / [Windows](iru/custom-scripts/install-takumi-guard-windows.ps1) |
 
-- Exit 0: 設定済み（修復不要）
-- Exit 1: 未設定（修復が必要）
-
-### 修復スクリプト
-
-`intune/remediation/install-takumi-guard.ps1`
-
-固定値を使用するため環境変数の設定は不要です。
-
-### 登録手順
-
-1. Microsoft Intune admin center > Devices > Scripts and remediations
-2. Create > Detection script: `detect-takumi-guard.ps1`
-3. Remediation script: `install-takumi-guard.ps1`
-4. Script settings:
-   - Run this script using the logged-on credentials: **Yes**
-   - Run script in 64-bit PowerShell: Yes
-
----
-
-## Jamf Pro (macOS)
-
-### 拡張属性
-
-`jamf-pro/extension-attributes/takumi-guard-status.sh`
-
-- Data Type: String
-- 出力: "Configured" / "Not Configured" / "Error"
-
-### ポリシースクリプト
-
-`jamf-pro/policies/install-takumi-guard.sh`
-
-固定値を使用するため、ポリシーパラメータ（$4-$6）の設定は不要です。
-
-### 登録手順
-
-1. **拡張属性**: Jamf Pro > Settings > Computer Management > Extension Attributes > New
-2. **スクリプト**: Jamf Pro > Settings > Computer Management > Scripts > New
-3. **ポリシー**: Jamf Pro > Computers > Policies > New
-   - Trigger: Smart Computer Group (拡張属性でフィルタ)
-   - Scripts: 上記スクリプトを追加
-
----
-
-## Iru (macOS/Windows)
-
-### カスタムスクリプト
-
-- macOS: `iru/custom-scripts/install-takumi-guard-macos.sh`
-- Windows: `iru/custom-scripts/install-takumi-guard-windows.ps1`
-
-### 監査スクリプト
-
-- macOS: `iru/custom-scripts/detect-takumi-guard.sh`
-
-固定値を使用するため環境変数の設定は不要です。
-
-### 登録手順
-
-1. Iru Console > Library > Custom Scripts
-2. Add Script > Upload script
-3. Blueprint に追加
+共通事項・検証手順は [docs/deployment-guide.md](docs/deployment-guide.md) を参照。
 
 ---
 

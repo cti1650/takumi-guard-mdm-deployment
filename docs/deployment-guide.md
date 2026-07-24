@@ -1,131 +1,35 @@
 # Takumi Guard MDM Deployment Guide
 
-MDM別の詳細な設定手順。
+MDM別の詳細な設定手順は、以下の媒体別ドキュメントを参照してください。
 
-匿名利用のため、以下の固定値を使用します（トークン・環境変数の指定は不要）。
+| MDM | 対象OS | ドキュメント |
+|-----|--------|--------------|
+| **Intune** | Windows | [intune.md](intune.md) |
+| **Jamf Pro** | macOS | [jamf-pro.md](jamf-pro.md) |
+| **Iru (旧Kandji)** | macOS/Windows | [iru.md](iru.md) |
+
+## 共通事項（固定値・匿名利用）
+
+いずれの MDM でも、以下の固定値を使用します（トークン・環境変数の指定は不要）。
 
 | 対象 | レジストリ（固定値） |
 |------|----------------------|
 | npm | `https://npm.flatt.tech/` |
-| PyPI (pip) | `https://pypi.flatt.tech/simple/` |
+| PyPI (pip / pip3) | `https://pypi.flatt.tech/simple/` |
 
-いずれのスクリプトも、設定・検出を各パッケージマネージャーの標準コマンド
-（`npm config` / `pip config`）で行うため、既存の `.npmrc` / `pip.ini` を
-上書きしません。対象はログオンユーザーのユーザー設定です。
-
----
-
-## Intune 設定手順
-
-### 1. Remediation パッケージの作成
-
-1. Microsoft Intune admin center にログイン
-2. **Devices** > **Scripts and remediations** > **Create**
-3. 名前: "Takumi Guard Configuration"
-4. **Detection script**: `intune/detection/detect-takumi-guard.ps1`
-5. **Remediation script**: `intune/remediation/install-takumi-guard.ps1`
-6. Script settings:
-   - Run script in 64-bit PowerShell: **Yes**
-   - Run this script using the logged-on credentials: **Yes**
-     （ユーザーの npm/pip 設定を対象とするため必須）
-
-### 2. 割り当て
-
-1. **Assignments** でターゲットグループを選択
-2. Schedule: Once / Daily / Hourly (検証時は Once)
-3. Deploy
-
----
-
-## Jamf Pro 設定手順
-
-### 1. 拡張属性の作成
-
-1. **Settings** > **Computer Management** > **Extension Attributes**
-2. **New**:
-   - Display Name: "Takumi Guard Status"
-   - Data Type: String
-   - Inventory Display: Extension Attributes
-   - Input Type: Script
-   - Script: `jamf-pro/extension-attributes/takumi-guard-status.sh` の内容
-3. Save
-
-### 2. スクリプトの登録
-
-1. **Settings** > **Computer Management** > **Scripts**
-2. **New**:
-   - Display Name: "Install Takumi Guard"
-   - Script: `jamf-pro/policies/install-takumi-guard.sh` の内容
-   - 固定値を使用するため Parameter Labels の設定は不要
-3. Save
-
-### 3. Smart Computer Group の作成
-
-1. **Computers** > **Smart Computer Groups** > **New**
-2. Criteria:
-   - Takumi Guard Status | is | Not Configured
-3. Save
-
-### 4. ポリシーの作成
-
-1. **Computers** > **Policies** > **New**
-2. General:
-   - Display Name: "Configure Takumi Guard"
-   - Trigger: Recurring Check-in
-   - Execution Frequency: Once per computer
-3. Scripts:
-   - Add "Install Takumi Guard"（パラメータの指定は不要）
-4. Scope:
-   - Target: 上記 Smart Computer Group
-5. Save
-
----
-
-## Iru 設定手順
-
-### 1. カスタムスクリプトの登録
-
-#### macOS
-
-1. Iru Console > **Library** > **Custom Scripts**
-2. **Add Script**:
-   - Name: "Takumi Guard Installer (macOS)"
-   - Script: `iru/custom-scripts/install-takumi-guard-macos.sh`
-   - Run As: root（スクリプトが自動的にコンソールユーザー権限で設定します）
-
-#### Windows
-
-1. Iru Console > **Library** > **Custom Scripts**
-2. **Add Script**:
-   - Name: "Takumi Guard Installer (Windows)"
-   - Script: `iru/custom-scripts/install-takumi-guard-windows.ps1`
-   - Run As: ログオンユーザー（ユーザーの npm/pip 設定を対象とするため）
-
-### 2. 監査スクリプトの登録 (macOS)
-
-1. **Library** > **Audit & Remediation**
-2. **Add**:
-   - Audit Script: `iru/custom-scripts/detect-takumi-guard.sh`
-   - Remediation Script: (上記インストールスクリプトを指定)
-
-### 3. Blueprint への追加
-
-1. **Blueprints** > 対象Blueprint を選択
-2. **Library Items** > Add
-3. 上記スクリプトを追加
-4. Save & Assign
-
----
+- 設定・検出は各パッケージマネージャーの標準コマンド（`npm config` / `pip config`）で行い、
+  `.npmrc` / `pip.ini` を直接編集しないため既存設定を上書きしません。
+- 対象は**ログオンユーザーのユーザー設定**です。
+- npm / pip が未導入の環境は、そのパッケージマネージャーをスキップします。
+- pip と pip3 はユーザー設定ファイルを共有するため、どちらか一方の設定で両方に反映されます。
 
 ## 検証手順
 
 ### 1. 検出テスト
 
-各MDMで検出スクリプトを手動実行し、正しく状態が取得できるか確認。
+各 MDM の検出スクリプトを手動実行し、状態が正しく取得できるか確認します。
 
 ### 2. 設定投入テスト
-
-テストデバイスで設定投入スクリプトを実行し、レジストリが正しく設定されるか確認。
 
 ```bash
 # 確認コマンド (macOS/Linux)
@@ -146,3 +50,8 @@ pip config get global.index-url
 npm install <known-malicious-package>
 pip install <known-malicious-package>
 ```
+
+## 参考リンク
+
+- [Takumi Guard クイックスタート (npm)](https://shisho.dev/docs/ja/t/guard/quickstart/npm/)
+- [Takumi Guard クイックスタート (PyPI)](https://shisho.dev/docs/ja/t/guard/quickstart/pypi/)
