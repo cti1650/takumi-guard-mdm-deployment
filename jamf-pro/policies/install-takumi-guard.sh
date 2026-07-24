@@ -1,18 +1,16 @@
 #!/bin/bash
 # ============================================
-# Takumi Guard 設定投入スクリプト (Jamf Pro Policy)
+# Takumi Guard configuration script (Jamf Pro Policy)
 # ============================================
-# npm / PyPI のレジストリを Takumi Guard（匿名利用）に設定します。
-# 各パッケージマネージャーのコマンド (npm config set / pip config set) で設定するため、
-# 既存の .npmrc / pip.conf を直接書き換えず、他の設定を保持したまま更新します。
-#
-# 匿名利用のため固定値を使用します（Jamf パラメータでの URL 指定は不要）。
-# Jamf Policy から root で実行され、コンソールユーザーの設定を対象にします。
+# Configures the npm / PyPI registry to Takumi Guard (anonymous mode) using each
+# package manager command (npm config set / pip config set), preserving other
+# existing settings. Anonymous mode uses fixed values (no Jamf parameters needed).
+# Runs as root from a Jamf Policy and targets the console user's settings.
 # ============================================
 
 set -uo pipefail
 
-# Takumi Guard 匿名利用レジストリ（固定値）
+# Takumi Guard anonymous registries (fixed values)
 NPM_REGISTRY="https://npm.flatt.tech/"
 PYPI_INDEX="https://pypi.flatt.tech/simple/"
 LOG_FILE="/var/log/takumi-guard-install.log"
@@ -21,39 +19,42 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$1] $2" | tee -a "$LOG_FILE"
 }
 
-# コンソールにログイン中のユーザー
+# Console (logged-in) user
 CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null)
 
-# ログインユーザーの環境でコマンドを実行（PATH解決のためログインシェル経由）
+# Run a command in the logged-in user's environment (login shell for PATH)
 as_user() {
     sudo -u "$CONSOLE_USER" -H bash -lc "$*"
 }
 
-configure_npm() {
-    if ! as_user 'command -v npm >/dev/null 2>&1'; then
-        log_message "WARN" "npm not installed - skipped"
-        return 0
-    fi
-    if as_user "npm config set registry '$NPM_REGISTRY'"; then
-        log_message "INFO" "npm configured"
-        return 0
-    fi
-    log_message "ERROR" "npm configuration failed"
+# Return the first *usable* command (whose --version actually runs), or nothing.
+# A version-manager shim (asdf/pyenv/nvm) with no version set exists on PATH but
+# fails at runtime, so probing --version filters it out.
+resolve_bin() {
+    local name
+    for name in "$@"; do
+        if as_user "command -v $name >/dev/null 2>&1 && $name --version >/dev/null 2>&1"; then
+            echo "$name"
+            return 0
+        fi
+    done
     return 1
 }
 
-configure_pip() {
-    local pip_bin
-    pip_bin=$(as_user 'command -v pip3 || command -v pip' 2>/dev/null || true)
-    if [[ -z "$pip_bin" ]]; then
-        log_message "WARN" "pip not installed - skipped"
+# Configure via the first usable command. No usable command -> skipped (0).
+configure() {
+    local label="$1" set_sub="$2"; shift 2
+    local bin
+    bin=$(resolve_bin "$@")
+    if [[ -z "$bin" ]]; then
+        log_message "WARN" "$label not available - skipped"
         return 0
     fi
-    if as_user "$pip_bin config set global.index-url '$PYPI_INDEX'"; then
-        log_message "INFO" "PyPI configured"
+    if as_user "$bin $set_sub"; then
+        log_message "INFO" "$label configured ($bin)"
         return 0
     fi
-    log_message "ERROR" "PyPI configuration failed"
+    log_message "ERROR" "$label configuration failed"
     return 1
 }
 
@@ -66,8 +67,8 @@ main() {
     fi
 
     local status=0
-    configure_npm || status=1
-    configure_pip || status=1
+    configure "npm"  "config set registry '$NPM_REGISTRY'" npm || status=1
+    configure "PyPI" "config set global.index-url '$PYPI_INDEX'" pip3 pip || status=1
 
     if [[ $status -eq 0 ]]; then
         log_message "INFO" "Takumi Guard configuration completed"

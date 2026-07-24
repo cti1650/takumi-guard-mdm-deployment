@@ -1,17 +1,18 @@
 <#
 .SYNOPSIS
-    Takumi Guard 設定投入スクリプト (Iru Custom Script - Windows)
+    Takumi Guard configuration script (Iru Custom Script - Windows)
 .DESCRIPTION
-    npm / PyPI のレジストリを Takumi Guard（匿名利用）に設定します。
-    各パッケージマネージャーのコマンドで設定するため、既存設定を保持します。
+    Configures the npm / PyPI registry to Takumi Guard (anonymous mode).
+    Uses each package manager command, preserving other existing settings.
 .NOTES
     MDM: Iru
-    対象OS: Windows 10/11
-    実行コンテキスト: ログオンユーザー
-      （ユーザーの npm/pip 設定を対象とするため、ユーザーコンテキストで実行してください）
+    Target OS: Windows 10/11
+    Execution context: logged-on user
+      (run in the user context so the user's own npm/pip settings are targeted)
+    Encoding: UTF-8 without BOM, ASCII-only comments (safe on Windows PowerShell 5.1)
 #>
 
-# Takumi Guard 匿名利用レジストリ（固定値）
+# Takumi Guard anonymous registries (fixed values)
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
 $LogFile     = "$env:ProgramData\Iru\Logs\takumi-guard.log"
@@ -25,10 +26,17 @@ function Write-Log {
     Write-Output $entry
 }
 
+# Return the first *usable* command (must run --version successfully), or $null.
+# A version-manager shim (pyenv/nvm/asdf) with no version set exists on PATH but
+# fails to run, so probing --version filters it out. pip / pip3 share the per-user
+# config file, so resolving either one is enough.
 function Resolve-Command {
     param([string[]]$Candidates)
     foreach ($name in $Candidates) {
-        if (Get-Command $name -ErrorAction SilentlyContinue) { return $name }
+        if (Get-Command $name -ErrorAction SilentlyContinue) {
+            & $name --version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $name }
+        }
     }
     return $null
 }

@@ -1,26 +1,33 @@
 <#
 .SYNOPSIS
-    Takumi Guard 設定投入スクリプト (Intune Remediation - Remediation)
+    Takumi Guard configuration script (Intune Remediation - Remediation)
 .DESCRIPTION
-    npm / PyPI のレジストリを Takumi Guard（匿名利用）に設定します。
-    各パッケージマネージャーのコマンド (npm config set / pip config set) で設定するため、
-    既存の .npmrc / pip.ini を直接書き換えず、他の設定を保持したまま更新します。
+    Configures the npm / PyPI registry to Takumi Guard (anonymous mode).
+    Uses each package manager command (npm config set / pip config set), so it does
+    not edit .npmrc / pip.ini directly and preserves other existing settings.
 .NOTES
     MDM: Microsoft Intune
-    対象OS: Windows 10/11
-    実行コンテキスト: ログオンユーザー
+    Target OS: Windows 10/11
+    Execution context: logged-on user
+    Encoding: UTF-8 without BOM, ASCII-only comments (safe on Windows PowerShell 5.1)
 #>
 
-# Takumi Guard 匿名利用レジストリ（固定値）
-# 参考: https://shisho.dev/docs/ja/t/guard/quickstart/
+# Takumi Guard anonymous registries (fixed values)
+# Ref: https://shisho.dev/docs/ja/t/guard/quickstart/
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
 
-# インストール済みのコマンド名を返す（未導入なら $null）
+# Return the first *usable* command (must run --version successfully), or $null.
+# A version-manager shim (pyenv/nvm/asdf) with no version set exists on PATH but
+# fails to run, so probing --version filters it out. pip / pip3 share the per-user
+# config file, so resolving either one is enough.
 function Resolve-Command {
     param([string[]]$Candidates)
     foreach ($name in $Candidates) {
-        if (Get-Command $name -ErrorAction SilentlyContinue) { return $name }
+        if (Get-Command $name -ErrorAction SilentlyContinue) {
+            & $name --version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $name }
+        }
     }
     return $null
 }

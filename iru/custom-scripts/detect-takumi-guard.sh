@@ -1,33 +1,46 @@
 #!/bin/bash
 # ============================================
-# Takumi Guard ステータス検出 (Iru Audit Script - macOS)
+# Takumi Guard status detection (Iru Audit Script - macOS)
 # ============================================
-# npm / PyPI のレジストリが Takumi Guard（匿名利用）を指しているかを、
-# 各パッケージマネージャーのコマンド (npm config get / pip config get) で確認します。
+# Checks whether the npm / PyPI registry points to Takumi Guard (anonymous mode)
+# using each package manager command (npm config get / pip config get).
 #
-# 終了コード:
-#   0 = Compliant (設定済み)
-#   1 = Non-Compliant (未設定)
+# Exit code:
+#   0 = Compliant (configured)
+#   1 = Non-Compliant (not configured)
 # ============================================
 
-# Takumi Guard 匿名利用レジストリ（固定値）
+# Takumi Guard anonymous registries (fixed values)
 NPM_REGISTRY="https://npm.flatt.tech/"
 PYPI_INDEX="https://pypi.flatt.tech/simple/"
 
-# コンソールにログイン中のユーザー
+# Console (logged-in) user
 CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null)
 
-# ログインユーザーの環境でコマンドを実行
+# Run a command in the logged-in user's environment (login shell for PATH)
 as_user() {
     sudo -u "$CONSOLE_USER" -H bash -lc "$*"
 }
 
-# 未導入は対象外(0)。導入済みは現在値が期待値と一致すれば 0、不一致で 1。
+# Return the first *usable* command (whose --version actually runs), or nothing.
+# A version-manager shim (asdf/pyenv/nvm) with no version set exists on PATH but
+# fails at runtime, so probing --version filters it out.
+resolve_bin() {
+    local name
+    for name in "$@"; do
+        if as_user "command -v $name >/dev/null 2>&1 && $name --version >/dev/null 2>&1"; then
+            echo "$name"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# No usable command -> out of scope (0). Otherwise compare current value with expected.
 check_registry() {
-    local resolve="$1" get="$2" expected="$3"
+    local get="$1" expected="$2"; shift 2
     local bin current
-    bin=$(as_user "$resolve" 2>/dev/null || true)
-    [[ -z "$bin" ]] && return 0
+    bin=$(resolve_bin "$@") || return 0
     current=$(as_user "$bin $get" 2>/dev/null | tr -d '[:space:]')
     [[ "${current%/}" == "${expected%/}" ]]
 }
@@ -38,8 +51,8 @@ main() {
         exit 1
     fi
 
-    if check_registry "command -v npm" "config get registry" "$NPM_REGISTRY" \
-        && check_registry "command -v pip3 || command -v pip" "config get global.index-url" "$PYPI_INDEX"; then
+    if check_registry "config get registry" "$NPM_REGISTRY" npm \
+        && check_registry "config get global.index-url" "$PYPI_INDEX" pip3 pip; then
         echo "COMPLIANT: Takumi Guard configured (npm/PyPI)"
         exit 0
     fi

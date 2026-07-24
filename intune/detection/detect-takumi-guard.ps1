@@ -1,35 +1,41 @@
 <#
 .SYNOPSIS
-    Takumi Guard インストール状態検出スクリプト (Intune Remediation - Detection)
+    Takumi Guard status detection script (Intune Remediation - Detection)
 .DESCRIPTION
-    npm / PyPI のレジストリが Takumi Guard（匿名利用）を指しているかを、
-    各パッケージマネージャーのコマンド (npm config get / pip config get) で確認します。
-    設定ファイルを直接読まないため、意図しない設定の見落としや誤判定を避けます。
-    Exit 0: 設定済み（修復不要）
-    Exit 1: 未設定（修復が必要）
+    Checks whether the npm / PyPI registry points to Takumi Guard (anonymous mode)
+    by using each package manager command (npm config get / pip config get).
+    It does not read config files directly, avoiding false judgements.
+    Exit 0: configured (no remediation needed)
+    Exit 1: not configured (remediation needed)
 .NOTES
     MDM: Microsoft Intune
-    対象OS: Windows 10/11
-    実行コンテキスト: ログオンユーザー
-      （Intune の "Run this script using the logged-on credentials" = Yes）
+    Target OS: Windows 10/11
+    Execution context: logged-on user
+      (Intune "Run this script using the logged-on credentials" = Yes)
+    Encoding: UTF-8 without BOM, ASCII-only comments (safe on Windows PowerShell 5.1)
 #>
 
-# Takumi Guard 匿名利用レジストリ（固定値）
-# 参考: https://shisho.dev/docs/ja/t/guard/quickstart/
+# Takumi Guard anonymous registries (fixed values)
+# Ref: https://shisho.dev/docs/ja/t/guard/quickstart/
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
 
-# インストール済みのコマンド名を返す（未導入なら $null）
-# pip / pip3 はユーザー設定ファイルを共有するため、どちらか片方を解決すれば十分。
+# Return the first *usable* command (must run --version successfully), or $null.
+# A version-manager shim (pyenv/nvm/asdf) with no version set exists on PATH but
+# fails to run, so probing --version filters it out. pip / pip3 share the per-user
+# config file, so resolving either one is enough.
 function Resolve-Command {
     param([string[]]$Candidates)
     foreach ($name in $Candidates) {
-        if (Get-Command $name -ErrorAction SilentlyContinue) { return $name }
+        if (Get-Command $name -ErrorAction SilentlyContinue) {
+            & $name --version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $name }
+        }
     }
     return $null
 }
 
-# 未導入は対象外(true)。導入済みなら現在の設定値が期待値と一致するかを返す。
+# Not installed -> out of scope (true). Installed -> true only if current value matches.
 function Test-Registry {
     param([string]$Command, [string[]]$GetArgs, [string]$Expected, [string]$Label)
 
