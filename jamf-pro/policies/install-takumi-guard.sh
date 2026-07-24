@@ -13,10 +13,10 @@ set -uo pipefail
 # Takumi Guard anonymous registries (fixed values)
 NPM_REGISTRY="https://npm.flatt.tech/"
 PYPI_INDEX="https://pypi.flatt.tech/simple/"
-LOG_FILE="/var/log/takumi-guard-install.log"
 
+# Log to stdout (captured by Jamf policy logs; no separate log file needed)
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$1] $2" | tee -a "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$1] $2"
 }
 
 # Console (logged-in) user
@@ -42,19 +42,20 @@ resolve_bin() {
 }
 
 # Configure via the first usable command. No usable command -> skipped (0).
+# Package manager stderr (e.g. npm config warnings) is captured and shown only on failure.
 configure() {
     local label="$1" set_sub="$2"; shift 2
-    local bin
+    local bin err
     bin=$(resolve_bin "$@")
     if [[ -z "$bin" ]]; then
         log_message "WARN" "$label not available - skipped"
         return 0
     fi
-    if as_user "$bin $set_sub"; then
+    if err=$(as_user "$bin $set_sub" 2>&1 >/dev/null); then
         log_message "INFO" "$label configured ($bin)"
         return 0
     fi
-    log_message "ERROR" "$label configuration failed"
+    log_message "ERROR" "$label configuration failed: $err"
     return 1
 }
 

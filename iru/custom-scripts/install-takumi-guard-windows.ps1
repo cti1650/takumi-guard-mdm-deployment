@@ -15,15 +15,11 @@
 # Takumi Guard anonymous registries (fixed values)
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
-$LogFile     = "$env:ProgramData\Iru\Logs\takumi-guard.log"
 
+# Log to stdout (captured by Iru; no separate log file needed)
 function Write-Log {
     param([string]$Level, [string]$Message)
-    $dir = Split-Path $LogFile -Parent
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    $entry = "[{0}] [IRU] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
-    Add-Content -Path $LogFile -Value $entry -Encoding UTF8
-    Write-Output $entry
+    Write-Output ("[{0}] [IRU] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message)
 }
 
 # Return the first *usable* command (must run --version successfully), or $null.
@@ -47,8 +43,9 @@ function Set-Registry {
         Write-Log "WARN" "$Label not installed - skipped"
         return
     }
-    & $Command @SetArgs
-    if ($LASTEXITCODE -ne 0) { throw "$Label configuration failed (exit $LASTEXITCODE)" }
+    # Capture output (incl. warnings on stderr); surface it only on failure.
+    $output = & $Command @SetArgs 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "$Label configuration failed (exit $LASTEXITCODE): $output" }
     Write-Log "INFO" "$Label configured"
 }
 

@@ -89,8 +89,11 @@ npm / pip が未インストールの場合、そのパッケージマネージ�
 
 ### ログの確認
 
-- **Windows (Iru)**: `%ProgramData%\Iru\Logs\takumi-guard.log`
-- **macOS (Jamf/Iru)**: `/var/log/takumi-guard-*.log`
+スクリプトの出力は各MDMのコンソールで確認できます（専用ログファイルは残しません）。
+
+- **Intune**: Devices > Scripts and remediations の出力
+- **Jamf Pro**: ポリシー実行ログ（Computer > History > Policy Logs）
+- **Iru**: カスタムスクリプトの実行結果（Iru Console）
 
 ### 手動テスト
 

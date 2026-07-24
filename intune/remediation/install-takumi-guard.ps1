@@ -40,9 +40,10 @@ function Set-Registry {
         return
     }
 
-    & $Command @SetArgs
+    # Capture output (incl. warnings on stderr); surface it only on failure.
+    $output = & $Command @SetArgs 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "$Label configuration failed (exit $LASTEXITCODE)"
+        throw "$Label configuration failed (exit $LASTEXITCODE): $output"
     }
     Write-Output "SET: $Label configured"
 }
