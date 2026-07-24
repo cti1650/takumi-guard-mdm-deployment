@@ -5,78 +5,46 @@
 # Data Type: String
 # Input Type: Script
 #
+# npm / PyPI のレジストリが Takumi Guard（匿名利用）を指しているかを、
+# 各パッケージマネージャーのコマンド (npm config get / pip config get) で確認します。
+#
 # 出力値:
-#   - "Configured" : Takumi Guard設定済み
+#   - "Configured"     : npm/PyPI とも Takumi Guard 設定済み（未導入のものは対象外）
 #   - "Not Configured" : 未設定
-#   - "Partial" : 一部設定済み
-#   - "Error" : 検出エラー
+#   - "Error"          : ログインユーザー未検出などの検出エラー
 # ============================================
 
-# ============================================
-# 設定
-# ============================================
-# 期待するレジストリホスト
-EXPECTED_REGISTRY_HOST="${TAKUMI_REGISTRY_HOST:-registry.takumi.dev}"
+# Takumi Guard 匿名利用レジストリ（固定値）
+NPM_REGISTRY="https://npm.flatt.tech/"
+PYPI_INDEX="https://pypi.flatt.tech/simple/"
 
-# ============================================
-# ユーザー検出
-# ============================================
-get_current_user() {
-    stat -f "%Su" /dev/console
+# コンソールにログイン中のユーザー
+CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null)
+
+# ログインユーザーの環境でコマンドを実行
+as_user() {
+    sudo -u "$CONSOLE_USER" -H bash -lc "$*"
 }
 
-get_user_home() {
-    local user="$1"
-    dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
+# 未導入は対象外(0)。導入済みは現在値が期待値と一致すれば 0、不一致で 1。
+check_registry() {
+    local resolve="$1" get="$2" expected="$3"
+    local bin current
+    bin=$(as_user "$resolve" 2>/dev/null || true)
+    [[ -z "$bin" ]] && return 0
+    current=$(as_user "$bin $get" 2>/dev/null | tr -d '[:space:]')
+    [[ "${current%/}" == "${expected%/}" ]]
 }
 
-# ============================================
-# 検出ロジック
-# ============================================
-check_npmrc_config() {
-    local npmrc_path="$1"
-
-    if [[ ! -f "$npmrc_path" ]]; then
-        echo "not_found"
-        return
-    fi
-
-    if grep -q "registry.*${EXPECTED_REGISTRY_HOST}" "$npmrc_path" 2>/dev/null; then
-        echo "configured"
-    else
-        echo "not_configured"
-    fi
-}
-
-# ============================================
-# メイン処理
-# ============================================
 main() {
-    local current_user
-    local user_home
-    local user_npmrc_status
-    local global_npmrc_status
-
-    current_user=$(get_current_user)
-
-    if [[ -z "$current_user" ]] || [[ "$current_user" == "root" ]]; then
+    if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || "$CONSOLE_USER" == "loginwindow" ]]; then
         echo "<result>Error</result>"
         exit 0
     fi
 
-    user_home=$(get_user_home "$current_user")
-
-    # ユーザー.npmrc確認
-    user_npmrc_status=$(check_npmrc_config "$user_home/.npmrc")
-
-    # グローバル.npmrc確認（/usr/local/etc/npmrc）
-    global_npmrc_status=$(check_npmrc_config "/usr/local/etc/npmrc")
-
-    # 判定
-    if [[ "$user_npmrc_status" == "configured" ]] || [[ "$global_npmrc_status" == "configured" ]]; then
+    if check_registry "command -v npm" "config get registry" "$NPM_REGISTRY" \
+        && check_registry "command -v pip3 || command -v pip" "config get global.index-url" "$PYPI_INDEX"; then
         echo "<result>Configured</result>"
-    elif [[ "$user_npmrc_status" == "not_found" ]] && [[ "$global_npmrc_status" == "not_found" ]]; then
-        echo "<result>Not Configured</result>"
     else
         echo "<result>Not Configured</result>"
     fi

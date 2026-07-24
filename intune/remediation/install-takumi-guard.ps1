@@ -2,112 +2,55 @@
 .SYNOPSIS
     Takumi Guard 設定投入スクリプト (Intune Remediation - Remediation)
 .DESCRIPTION
-    Takumi Guardのレジストリ設定を.npmrcに投入します。
-    Intune修復スクリプトとして動作し、検出スクリプトで異常判定時に実行されます。
+    npm / PyPI のレジストリを Takumi Guard（匿名利用）に設定します。
+    各パッケージマネージャーのコマンド (npm config set / pip config set) で設定するため、
+    既存の .npmrc / pip.ini を直接書き換えず、他の設定を保持したまま更新します。
 .NOTES
     MDM: Microsoft Intune
     対象OS: Windows 10/11
+    実行コンテキスト: ログオンユーザー
 #>
 
-# ============================================
-# 設定（環境変数から取得、未設定時はデフォルト値）
-# ============================================
-$Config = @{
-    # npm設定ファイルのパス
-    NpmrcPath = if ($env:TAKUMI_NPMRC_PATH) { $env:TAKUMI_NPMRC_PATH } else { "$env:USERPROFILE\.npmrc" }
+# Takumi Guard 匿名利用レジストリ（固定値）
+# 参考: https://shisho.dev/docs/ja/t/guard/quickstart/
+$NpmRegistry = "https://npm.flatt.tech/"
+$PypiIndex   = "https://pypi.flatt.tech/simple/"
 
-    # Takumi Guard レジストリURL（組織トークンを含む）
-    # 形式: https://registry.takumi.dev/npm/<ORG_TOKEN>/
-    # 匿名利用の場合: https://registry.takumi.dev/npm/
-    RegistryUrl = if ($env:TAKUMI_REGISTRY_URL) { $env:TAKUMI_REGISTRY_URL } else { "" }
-
-    # バックアップを作成するか
-    CreateBackup = if ($env:TAKUMI_CREATE_BACKUP) { [bool]$env:TAKUMI_CREATE_BACKUP } else { $true }
-
-    # 既存設定をマージするか（false=上書き）
-    MergeConfig = if ($env:TAKUMI_MERGE_CONFIG) { [bool]$env:TAKUMI_MERGE_CONFIG } else { $true }
-}
-
-# ============================================
-# 検証
-# ============================================
-if ([string]::IsNullOrWhiteSpace($Config.RegistryUrl)) {
-    Write-Error "REMEDIATION ERROR: TAKUMI_REGISTRY_URL environment variable is required"
-    Write-Error "Set the registry URL via Intune script configuration or device environment"
-    exit 1
-}
-
-# ============================================
-# バックアップ処理
-# ============================================
-function Backup-Npmrc {
-    param([string]$Path)
-
-    if ((Test-Path $Path) -and $Config.CreateBackup) {
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $backupPath = "$Path.backup_$timestamp"
-        Copy-Item -Path $Path -Destination $backupPath -Force
-        Write-Output "BACKUP: Created backup at $backupPath"
+# インストール済みのコマンド名を返す（未導入なら $null）
+function Resolve-Command {
+    param([string[]]$Candidates)
+    foreach ($name in $Candidates) {
+        if (Get-Command $name -ErrorAction SilentlyContinue) { return $name }
     }
+    return $null
 }
 
-# ============================================
-# 設定投入処理
-# ============================================
-function Set-NpmrcRegistry {
-    param([string]$Path, [string]$RegistryUrl)
+function Set-Registry {
+    param([string]$Command, [string[]]$SetArgs, [string]$Label)
 
-    $registryLine = "registry=$RegistryUrl"
-
-    if ($Config.MergeConfig -and (Test-Path $Path)) {
-        # 既存設定とマージ
-        $content = Get-Content $Path
-        $newContent = @()
-        $registryFound = $false
-
-        foreach ($line in $content) {
-            if ($line -match "^registry\s*=") {
-                $newContent += $registryLine
-                $registryFound = $true
-            } else {
-                $newContent += $line
-            }
-        }
-
-        if (-not $registryFound) {
-            $newContent = @($registryLine) + $newContent
-        }
-
-        $newContent | Set-Content -Path $Path -Encoding UTF8
-    } else {
-        # 新規作成または上書き
-        $registryLine | Set-Content -Path $Path -Encoding UTF8
+    if (-not $Command) {
+        Write-Output "SKIP: $Label not installed"
+        return
     }
 
-    Write-Output "REMEDIATION: Registry configured to $RegistryUrl"
+    & $Command @SetArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Label configuration failed (exit $LASTEXITCODE)"
+    }
+    Write-Output "SET: $Label configured"
 }
 
-# ============================================
-# メイン処理
-# ============================================
 try {
     Write-Output "REMEDIATION: Starting Takumi Guard configuration"
 
-    # バックアップ
-    Backup-Npmrc -Path $Config.NpmrcPath
+    $npm = Resolve-Command @("npm")
+    $pip = Resolve-Command @("pip", "pip3")
 
-    # 設定投入
-    Set-NpmrcRegistry -Path $Config.NpmrcPath -RegistryUrl $Config.RegistryUrl
+    Set-Registry -Command $npm -SetArgs @("config", "set", "registry", $NpmRegistry) -Label "npm"
+    Set-Registry -Command $pip -SetArgs @("config", "set", "global.index-url", $PypiIndex) -Label "PyPI"
 
-    # 検証
-    $content = Get-Content $Config.NpmrcPath -Raw
-    if ($content -match [regex]::Escape($Config.RegistryUrl)) {
-        Write-Output "REMEDIATION SUCCESS: Takumi Guard configured successfully"
-        exit 0
-    } else {
-        Write-Error "REMEDIATION VERIFY FAILED: Configuration not applied correctly"
-        exit 1
-    }
+    Write-Output "REMEDIATION SUCCESS: Takumi Guard configured"
+    exit 0
 }
 catch {
     Write-Error "REMEDIATION ERROR: $_"

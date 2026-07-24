@@ -1,7 +1,19 @@
 # Takumi Guard MDM Deployment Scripts
 
 Takumi Guard (GMO Flatt Security) のMDM配布用スクリプト集。
-Intune、Jamf Pro、Iru (旧Kandji) で段階的な検出・設定投入が可能。
+Intune、Jamf Pro、Iru (旧Kandji) で **npm / PyPI** のレジストリ設定を検出・投入できます。
+
+## 対象パッケージマネージャー
+
+匿名利用のため固定値を使用します（トークン・アカウント登録は不要）。
+
+| 対象 | 設定コマンド | レジストリ（固定値） |
+|------|--------------|----------------------|
+| **npm** | `npm config set registry <URL>` | `https://npm.flatt.tech/` |
+| **PyPI (pip)** | `pip config set global.index-url <URL>` | `https://pypi.flatt.tech/simple/` |
+
+> 設定・検出はいずれも各パッケージマネージャーの標準コマンドで行います。
+> `.npmrc` / `pip.ini` を直接編集しないため、既存の設定を上書きしません。
 
 ## 対応MDM
 
@@ -26,21 +38,20 @@ Intune、Jamf Pro、Iru (旧Kandji) で段階的な検出・設定投入が可�
 │   ├── blueprints/         # ブループリント設定
 │   └── custom-scripts/     # カスタムスクリプト
 └── common/
-    └── config-template.yaml  # 設定テンプレート
+    └── config-template.yaml  # 設定テンプレート（参照用・編集不要）
 ```
 
-## セットアップ
+## 実行コンテキスト（重要）
 
-### 1. 設定ファイルの準備
+対象はログオンユーザーの npm/pip 設定です。そのため:
 
-```bash
-cp common/config-template.yaml common/config.yaml
-# config.yaml を編集して組織のRegistry URLを設定
-```
+- **Windows (Intune/Iru)**: ログオンユーザーのコンテキストで実行してください
+  （Intune の場合は "Run this script using the logged-on credentials" = Yes）。
+- **macOS (Jamf/Iru)**: root で実行されますが、スクリプトが自動的にコンソール
+  ログイン中のユーザー権限でコマンドを実行します。
 
-### 2. 各MDMへの登録
-
-詳細は `docs/deployment-guide.md` を参照。
+npm / pip が未インストールの場合、そのパッケージマネージャーはスキップされます
+（設定対象がないため検出上も対象外扱い）。
 
 ---
 
@@ -57,20 +68,16 @@ cp common/config-template.yaml common/config.yaml
 
 `intune/remediation/install-takumi-guard.ps1`
 
-#### 環境変数
-
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `TAKUMI_REGISTRY_URL` | Yes | Takumi Guard Registry URL |
-| `TAKUMI_DETECTION_MODE` | No | registry / proxy / both (default: registry) |
-| `TAKUMI_CREATE_BACKUP` | No | true / false (default: true) |
+固定値を使用するため環境変数の設定は不要です。
 
 ### 登録手順
 
 1. Microsoft Intune admin center > Devices > Scripts and remediations
 2. Create > Detection script: `detect-takumi-guard.ps1`
 3. Remediation script: `install-takumi-guard.ps1`
-4. Script settings で環境変数を設定
+4. Script settings:
+   - Run this script using the logged-on credentials: **Yes**
+   - Run script in 64-bit PowerShell: Yes
 
 ---
 
@@ -87,13 +94,7 @@ cp common/config-template.yaml common/config.yaml
 
 `jamf-pro/policies/install-takumi-guard.sh`
 
-#### パラメータ
-
-| Parameter | 説明 |
-|-----------|------|
-| $4 | Registry URL (必須) |
-| $5 | Install mode: user / global / both (default: user) |
-| $6 | Create backup: true / false (default: true) |
+固定値を使用するため、ポリシーパラメータ（$4-$6）の設定は不要です。
 
 ### 登録手順
 
@@ -116,20 +117,13 @@ cp common/config-template.yaml common/config.yaml
 
 - macOS: `iru/custom-scripts/detect-takumi-guard.sh`
 
-#### 環境変数
-
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `TAKUMI_REGISTRY_URL` | Yes | Takumi Guard Registry URL |
-| `TAKUMI_INSTALL_MODE` | No | user / global / both (default: user) |
-| `TAKUMI_CREATE_BACKUP` | No | true / false (default: true) |
+固定値を使用するため環境変数の設定は不要です。
 
 ### 登録手順
 
 1. Iru Console > Library > Custom Scripts
 2. Add Script > Upload script
-3. Environment Variables で上記変数を設定
-4. Blueprint に追加
+3. Blueprint に追加
 
 ---
 
@@ -149,33 +143,27 @@ cp common/config-template.yaml common/config.yaml
 
 ---
 
-## セキュリティ
-
-- **組織トークン**: `TAKUMI_REGISTRY_URL` には組織トークンを含めて設定
-- **環境変数**: 機密情報はMDMの環境変数機能で管理（リポジトリには含めない）
-- **バックアップ**: 設定投入前に既存.npmrcをバックアップ
-
----
-
 ## トラブルシューティング
 
 ### ログの確認
 
-- **Windows (Intune/Iru)**: `%ProgramData%\Iru\Logs\takumi-guard.log`
+- **Windows (Iru)**: `%ProgramData%\Iru\Logs\takumi-guard.log`
 - **macOS (Jamf/Iru)**: `/var/log/takumi-guard-*.log`
 
 ### 手動テスト
 
 ```bash
-# macOS
-export TAKUMI_REGISTRY_URL="https://registry.takumi.dev/npm/"
-./iru/custom-scripts/install-takumi-guard-macos.sh
+# npm / PyPI の現在値を確認
+npm config get registry            # -> https://npm.flatt.tech/
+pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
 ```
 
-```powershell
-# Windows
-$env:TAKUMI_REGISTRY_URL = "https://registry.takumi.dev/npm/"
-.\iru\custom-scripts\install-takumi-guard-windows.ps1
+### 動作確認
+
+```bash
+# 悪性パッケージのブロックテスト（403 になれば正常）
+npm install <known-malicious-package>
+pip install <known-malicious-package>
 ```
 
 ---
@@ -183,6 +171,7 @@ $env:TAKUMI_REGISTRY_URL = "https://registry.takumi.dev/npm/"
 ## 参考リンク
 
 - [Takumi Guard 公式ドキュメント](https://shisho.dev/docs/ja/t/guard/)
+- [Takumi Guard クイックスタート (npm)](https://shisho.dev/docs/ja/t/guard/quickstart/npm/)
+- [Takumi Guard クイックスタート (PyPI)](https://shisho.dev/docs/ja/t/guard/quickstart/pypi/)
 - [Intune Remediation Scripts](https://learn.microsoft.com/mem/intune/fundamentals/remediations)
 - [Jamf Pro Scripts](https://docs.jamf.com/jamf-pro/documentation/Scripts.html)
-- [Iru Custom Scripts](https://support.iru.dev/)

@@ -2,146 +2,80 @@
 # ============================================
 # Takumi Guard 設定投入スクリプト (Jamf Pro Policy)
 # ============================================
-# Jamf Pro Policyから実行されるスクリプト
-# Parameter Labels:
-#   $4 = Registry URL (required)
-#   $5 = Installation Mode: user | global | both (default: user)
-#   $6 = Create Backup: true | false (default: true)
+# npm / PyPI のレジストリを Takumi Guard（匿名利用）に設定します。
+# 各パッケージマネージャーのコマンド (npm config set / pip config set) で設定するため、
+# 既存の .npmrc / pip.conf を直接書き換えず、他の設定を保持したまま更新します。
+#
+# 匿名利用のため固定値を使用します（Jamf パラメータでの URL 指定は不要）。
+# Jamf Policy から root で実行され、コンソールユーザーの設定を対象にします。
 # ============================================
 
-# ============================================
-# Jamf パラメータ
-# ============================================
-REGISTRY_URL="${4:-}"
-INSTALL_MODE="${5:-user}"
-CREATE_BACKUP="${6:-true}"
+set -uo pipefail
 
-# ============================================
-# ログ
-# ============================================
+# Takumi Guard 匿名利用レジストリ（固定値）
+NPM_REGISTRY="https://npm.flatt.tech/"
+PYPI_INDEX="https://pypi.flatt.tech/simple/"
 LOG_FILE="/var/log/takumi-guard-install.log"
 
 log_message() {
-    local level="$1"
-    local message="$2"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$1] $2" | tee -a "$LOG_FILE"
 }
 
-# ============================================
-# 検証
-# ============================================
-if [[ -z "$REGISTRY_URL" ]]; then
-    log_message "ERROR" "Registry URL is required (Parameter 4)"
-    log_message "ERROR" "Set the registry URL in Jamf Pro Policy parameters"
-    exit 1
-fi
+# コンソールにログイン中のユーザー
+CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null)
 
-# ============================================
-# ユーザー検出
-# ============================================
-get_current_user() {
-    stat -f "%Su" /dev/console
+# ログインユーザーの環境でコマンドを実行（PATH解決のためログインシェル経由）
+as_user() {
+    sudo -u "$CONSOLE_USER" -H bash -lc "$*"
 }
 
-get_user_home() {
-    local user="$1"
-    dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
-}
-
-get_user_uid() {
-    local user="$1"
-    id -u "$user" 2>/dev/null
-}
-
-# ============================================
-# バックアップ処理
-# ============================================
-backup_file() {
-    local file_path="$1"
-
-    if [[ -f "$file_path" ]] && [[ "$CREATE_BACKUP" == "true" ]]; then
-        local timestamp
-        timestamp=$(date '+%Y%m%d_%H%M%S')
-        local backup_path="${file_path}.backup_${timestamp}"
-        cp "$file_path" "$backup_path"
-        log_message "INFO" "Backup created: $backup_path"
+configure_npm() {
+    if ! as_user 'command -v npm >/dev/null 2>&1'; then
+        log_message "WARN" "npm not installed - skipped"
+        return 0
     fi
+    if as_user "npm config set registry '$NPM_REGISTRY'"; then
+        log_message "INFO" "npm configured"
+        return 0
+    fi
+    log_message "ERROR" "npm configuration failed"
+    return 1
 }
 
-# ============================================
-# 設定投入処理
-# ============================================
-configure_npmrc() {
-    local npmrc_path="$1"
-    local owner="$2"
-    local registry_line="registry=${REGISTRY_URL}"
-
-    backup_file "$npmrc_path"
-
-    if [[ -f "$npmrc_path" ]]; then
-        # 既存のregistry行を削除して新しい設定を追加
-        local temp_file
-        temp_file=$(mktemp)
-        grep -v "^registry=" "$npmrc_path" > "$temp_file" 2>/dev/null || true
-        echo "$registry_line" | cat - "$temp_file" > "$npmrc_path"
-        rm -f "$temp_file"
-    else
-        # 新規作成
-        echo "$registry_line" > "$npmrc_path"
+configure_pip() {
+    local pip_bin
+    pip_bin=$(as_user 'command -v pip3 || command -v pip' 2>/dev/null || true)
+    if [[ -z "$pip_bin" ]]; then
+        log_message "WARN" "pip not installed - skipped"
+        return 0
     fi
-
-    # 所有者設定
-    if [[ -n "$owner" ]] && [[ "$owner" != "root" ]]; then
-        chown "$owner" "$npmrc_path"
+    if as_user "$pip_bin config set global.index-url '$PYPI_INDEX'"; then
+        log_message "INFO" "PyPI configured"
+        return 0
     fi
-
-    chmod 644 "$npmrc_path"
-    log_message "INFO" "Configured: $npmrc_path"
+    log_message "ERROR" "PyPI configuration failed"
+    return 1
 }
 
-# ============================================
-# メイン処理
-# ============================================
 main() {
     log_message "INFO" "Starting Takumi Guard configuration"
-    log_message "INFO" "Install mode: $INSTALL_MODE"
 
-    local current_user
-    local user_home
-    local success=true
+    if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || "$CONSOLE_USER" == "loginwindow" ]]; then
+        log_message "ERROR" "No valid console user session"
+        exit 1
+    fi
 
-    current_user=$(get_current_user)
-    user_home=$(get_user_home "$current_user")
+    local status=0
+    configure_npm || status=1
+    configure_pip || status=1
 
-    case "$INSTALL_MODE" in
-        user)
-            if [[ -z "$current_user" ]] || [[ "$current_user" == "root" ]]; then
-                log_message "ERROR" "No valid user session found"
-                exit 1
-            fi
-            configure_npmrc "$user_home/.npmrc" "$current_user"
-            ;;
-        global)
-            mkdir -p /usr/local/etc
-            configure_npmrc "/usr/local/etc/npmrc" "root"
-            ;;
-        both)
-            mkdir -p /usr/local/etc
-            configure_npmrc "/usr/local/etc/npmrc" "root"
-            if [[ -n "$current_user" ]] && [[ "$current_user" != "root" ]]; then
-                configure_npmrc "$user_home/.npmrc" "$current_user"
-            fi
-            ;;
-        *)
-            log_message "ERROR" "Invalid install mode: $INSTALL_MODE"
-            exit 1
-            ;;
-    esac
+    if [[ $status -eq 0 ]]; then
+        log_message "INFO" "Takumi Guard configuration completed"
+        exit 0
+    fi
 
-    log_message "INFO" "Takumi Guard configuration completed"
-    exit 0
+    log_message "ERROR" "Takumi Guard configuration failed"
+    exit 1
 }
 
 main

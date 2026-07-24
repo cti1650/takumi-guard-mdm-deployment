@@ -2,17 +2,22 @@
 
 MDM別の詳細な設定手順。
 
+匿名利用のため、以下の固定値を使用します（トークン・環境変数の指定は不要）。
+
+| 対象 | レジストリ（固定値） |
+|------|----------------------|
+| npm | `https://npm.flatt.tech/` |
+| PyPI (pip) | `https://pypi.flatt.tech/simple/` |
+
+いずれのスクリプトも、設定・検出を各パッケージマネージャーの標準コマンド
+（`npm config` / `pip config`）で行うため、既存の `.npmrc` / `pip.ini` を
+上書きしません。対象はログオンユーザーのユーザー設定です。
+
+---
+
 ## Intune 設定手順
 
-### 1. 環境変数の準備
-
-Intune スクリプト設定で以下の環境変数を設定:
-
-```
-TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
-```
-
-### 2. Remediation パッケージの作成
+### 1. Remediation パッケージの作成
 
 1. Microsoft Intune admin center にログイン
 2. **Devices** > **Scripts and remediations** > **Create**
@@ -20,10 +25,11 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
 4. **Detection script**: `intune/detection/detect-takumi-guard.ps1`
 5. **Remediation script**: `intune/remediation/install-takumi-guard.ps1`
 6. Script settings:
-   - Run script in 64-bit PowerShell: Yes
-   - Run this script using the logged-on credentials: No (SYSTEM権限)
+   - Run script in 64-bit PowerShell: **Yes**
+   - Run this script using the logged-on credentials: **Yes**
+     （ユーザーの npm/pip 設定を対象とするため必須）
 
-### 3. 割り当て
+### 2. 割り当て
 
 1. **Assignments** でターゲットグループを選択
 2. Schedule: Once / Daily / Hourly (検証時は Once)
@@ -50,10 +56,7 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
 2. **New**:
    - Display Name: "Install Takumi Guard"
    - Script: `jamf-pro/policies/install-takumi-guard.sh` の内容
-   - Parameter Labels:
-     - Parameter 4: Registry URL
-     - Parameter 5: Install Mode
-     - Parameter 6: Create Backup
+   - 固定値を使用するため Parameter Labels の設定は不要
 3. Save
 
 ### 3. Smart Computer Group の作成
@@ -71,11 +74,7 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
    - Trigger: Recurring Check-in
    - Execution Frequency: Once per computer
 3. Scripts:
-   - Add "Install Takumi Guard"
-   - Parameter Values:
-     - $4: `https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/`
-     - $5: `user`
-     - $6: `true`
+   - Add "Install Takumi Guard"（パラメータの指定は不要）
 4. Scope:
    - Target: 上記 Smart Computer Group
 5. Save
@@ -92,13 +91,7 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
 2. **Add Script**:
    - Name: "Takumi Guard Installer (macOS)"
    - Script: `iru/custom-scripts/install-takumi-guard-macos.sh`
-   - Run As: root
-3. **Environment Variables**:
-   ```
-   TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
-   TAKUMI_INSTALL_MODE=user
-   TAKUMI_CREATE_BACKUP=true
-   ```
+   - Run As: root（スクリプトが自動的にコンソールユーザー権限で設定します）
 
 #### Windows
 
@@ -106,8 +99,7 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
 2. **Add Script**:
    - Name: "Takumi Guard Installer (Windows)"
    - Script: `iru/custom-scripts/install-takumi-guard-windows.ps1`
-   - Run As: SYSTEM
-3. **Environment Variables**: 同上
+   - Run As: ログオンユーザー（ユーザーの npm/pip 設定を対象とするため）
 
 ### 2. 監査スクリプトの登録 (macOS)
 
@@ -133,24 +125,24 @@ TAKUMI_REGISTRY_URL=https://registry.takumi.dev/npm/<YOUR_ORG_TOKEN>/
 
 ### 2. 設定投入テスト
 
-テストデバイスで設定投入スクリプトを実行し、.npmrc が正しく設定されるか確認。
+テストデバイスで設定投入スクリプトを実行し、レジストリが正しく設定されるか確認。
 
 ```bash
 # 確認コマンド (macOS/Linux)
-cat ~/.npmrc
-npm config get registry
+npm config get registry            # -> https://npm.flatt.tech/
+pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
 ```
 
 ```powershell
 # 確認コマンド (Windows)
-Get-Content $env:USERPROFILE\.npmrc
 npm config get registry
+pip config get global.index-url
 ```
 
 ### 3. Takumi Guard 動作確認
 
 ```bash
-# 悪性パッケージのブロックテスト
+# 悪性パッケージのブロックテスト（403エラーになれば正常）
 npm install <known-malicious-package>
-# 403エラーになれば正常
+pip install <known-malicious-package>
 ```
