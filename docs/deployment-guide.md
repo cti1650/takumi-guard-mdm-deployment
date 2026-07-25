@@ -1,57 +1,25 @@
-# Takumi Guard MDM Deployment Guide
+# ドキュメント一覧
 
-MDM別の詳細な設定手順は、以下の媒体別ドキュメントを参照してください。
+## セットアップ手順（作業用・コピペで完結）
 
-| MDM | 対象OS | ドキュメント |
-|-----|--------|--------------|
+| MDM | 対象OS | 手順 |
+|-----|--------|------|
 | **Intune** | Windows | [intune.md](intune.md) |
 | **Jamf Pro** | macOS | [jamf-pro.md](jamf-pro.md) |
 | **Iru (旧Kandji)** | macOS/Windows | [iru.md](iru.md) |
 
-## 共通事項（固定値・匿名利用）
+いずれも URL・トークン・パラメータの入力は不要です（匿名利用の固定値をスクリプトに内蔵）。
 
-いずれの MDM でも、以下の固定値を使用します（トークン・環境変数の指定は不要）。
+## 詳細ドキュメント
 
-| 対象 | レジストリ（固定値） |
-|------|----------------------|
-| npm | `https://npm.flatt.tech/` |
-| PyPI (pip / pip3) | `https://pypi.flatt.tech/simple/` |
+| ページ | 内容 |
+|--------|------|
+| [design.md](design.md) | 設計方針・動作仕様（各設定値の理由、検出仕様、文字コード等） |
+| [troubleshooting.md](troubleshooting.md) | 動作確認コマンド・よくある事象・ログの場所 |
+| [intune-win32.md](intune-win32.md) | Intune で署名エラーが出る場合の Win32 アプリ配布手順 |
 
-- 設定・検出は各パッケージマネージャーの標準コマンド（`npm config` / `pip config`）で行い、
-  `.npmrc` / `pip.ini` を直接編集しないため既存設定を上書きしません。
-- 対象は**ログオンユーザーのユーザー設定**です。
-- npm / pip が未導入の環境は、そのパッケージマネージャーをスキップします。
-- pip と pip3 はユーザー設定ファイルを共有するため、どちらか一方の設定で両方に反映されます。
+## 段階的展開の目安
 
-## 検証手順
-
-### 1. 検出テスト
-
-各 MDM の検出スクリプトを手動実行し、状態が正しく取得できるか確認します。
-
-### 2. 設定投入テスト
-
-```bash
-# 確認コマンド (macOS/Linux)
-npm config get registry            # -> https://npm.flatt.tech/
-pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
-```
-
-```powershell
-# 確認コマンド (Windows)
-npm config get registry
-pip config get global.index-url
-```
-
-### 3. Takumi Guard 動作確認
-
-```bash
-# 悪性パッケージのブロックテスト（403エラーになれば正常）
-npm install <known-malicious-package>
-pip install <known-malicious-package>
-```
-
-## 参考リンク
-
-- [Takumi Guard クイックスタート (npm)](https://shisho.dev/docs/ja/t/guard/quickstart/npm/)
-- [Takumi Guard クイックスタート (PyPI)](https://shisho.dev/docs/ja/t/guard/quickstart/pypi/)
+1. **Phase 1: 検出のみ** — 検出スクリプト / 拡張属性 / 監査のみ登録し現状把握
+2. **Phase 2: パイロット** — 少数のテストデバイスに設定投入を適用
+3. **Phase 3: 全体展開** — 対象グループを拡大
