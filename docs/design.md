@@ -27,6 +27,8 @@
 
 pip と pip3 はユーザー設定ファイルを共有するため、どちらか一方（存在する方）への設定で両方に反映されます。
 
+> **対象外のパッケージマネージャー**: uv / poetry / yarn (berry) / pnpm / bun はそれぞれ独自の設定機構を持つため対象外です。特に **uv は pip の設定を参照しない**ため本スクリプトでは保護されません（対応する場合は `UV_DEFAULT_INDEX` 環境変数や `uv.toml` での別対応が必要）。
+
 ## 実行コンテキスト
 
 - **Windows (Intune/Iru)**: ログオンユーザーのコンテキストで実行が必須。Microsoft は多くの修復で SYSTEM を推奨していますが、本スクリプトはユーザーの npm/pip 設定が対象のため、SYSTEM 実行では意味がありません。Intune では「Run this script using the logged-on credentials = Yes」がこれに当たります
@@ -37,15 +39,24 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 | スクリプト | 結果の返し方 |
 |------|------|
 | Intune 検出 / Iru 監査 | `Exit 0` = 設定済み（適合） / `Exit 1` = 未設定（要修復） |
-| Jamf 拡張属性 | `<result>Configured</result>` / `<result>Not Configured</result>` / `<result>Error</result>`（コンソールユーザー不在時） |
+| Jamf 拡張属性 | `Configured` / `Configured (npm only)` / `Configured (pip only)` / `Not Applicable`（使用可能なPMなし） / `Not Configured` / `Error`（コンソールユーザー不在時）を `<result>` タグで返却 |
 
 - **未導入・実行不能なパッケージマネージャーは「対象外」= 適合扱い**です。存在確認は `command -v` / `Get-Command` に加えて `--version` の実行成功まで確認するため、asdf / pyenv / nvm などの「バージョン未設定の shim」（存在するが実行時に失敗する）も安全にスキップされます
+- スキップは「保護されていないのに緑に見える」状態になり得るため、Jamf 拡張属性は `Configured (npm only)` 等の**部分適合値でスキップを可視化**します（Intune / Iru はコンソール出力の `SKIP:` 行で確認可能）。Smart Group の判定条件（`is Not Configured`）には影響しません
 - 設定値の比較は末尾スラッシュを除去して行います
+
+## ドリフト修正（設定が戻された場合）
+
+| MDM | 再設定の仕組み |
+|------|------|
+| Intune | Remediation のスケジュール（Daily 推奨）ごとに検出 → 非適合なら修復を再実行 |
+| Jamf Pro | インベントリ更新で拡張属性が `Not Configured` に戻る → Smart Group に再加入 → **Ongoing** ポリシーが再実行。`Once per computer` では再実行されないため必ず `Ongoing` を使用し、ポリシーに `Update Inventory` を含めて設定直後にスコープから離脱させます |
+| Iru | Audit & Remediation のサイクルで監査（exit 1）→ Remediation スクリプトを再実行 |
 
 ## 投入・解除の仕様
 
 - 投入: `npm config set registry` / `pip config set global.index-url`。パッケージマネージャーの警告（stderr）は成功時は表示せず、失敗時のみエラー詳細として出力します
-- 解除（Windows のみスクリプト提供）: `npm config delete registry` / `pip config unset global.index-url`。管理対象キーのみ削除し、ほかの設定は保持します。macOS はアンインストールスクリプト未提供です（必要になった際に同じ方式で追加可能）
+- 解除: `npm config delete registry` / `pip config unset global.index-url`。管理対象キーのみ削除し、ほかの設定は保持します。Windows は [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1)、macOS は [Jamf 用](../jamf-pro/policies/uninstall-takumi-guard.sh) / [Iru 用](../iru/custom-scripts/uninstall-takumi-guard-macos.sh) を提供
 
 ## Windows の文字コード
 

@@ -2,6 +2,8 @@
 
 カスタムスクリプト（設定投入）と監査スクリプト（検出）を登録します。**貼り付ける値はすべて下表のとおり**です。URL・トークン・環境変数の入力は不要です。
 
+> Iru は 2025年10月に Kandji から改称された比較的新しいプラットフォームです。画面構成が本手順と異なる場合は公式ドキュメントを併せて確認してください。
+
 ## 1. カスタムスクリプトを登録
 
 Iru Console > **Library** > **Custom Scripts** > **Add Script**
@@ -43,6 +45,15 @@ Iru Console > **Library** > **Custom Scripts** > **Add Script**
 npm config get registry            # -> https://npm.flatt.tech/
 pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
 ```
+
+## 5. 解除（アンインストール）する場合
+
+対象から外すデバイスの設定を元に戻すには、解除スクリプトを Custom Script として登録し、解除対象の Blueprint で実行します。
+
+| OS | スクリプト |
+|------|------|
+| macOS | [uninstall-takumi-guard-macos.sh](../iru/custom-scripts/uninstall-takumi-guard-macos.sh)（Run As: `root`） |
+| Windows | [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1)（Run As: ログオンユーザー） |
 
 ---
 

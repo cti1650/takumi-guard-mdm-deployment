@@ -4,8 +4,8 @@
 # ============================================================
 # Verifies the full state transition: broken-shim detect (all skipped) ->
 # unconfigured audit/EA -> jamf policy install -> configured audit/EA ->
-# inline revert -> reverted audit/EA, then repeats configure/detect/revert
-# with the Iru macOS install script.
+# jamf uninstall -> reverted audit/EA, then repeats configure/detect/uninstall
+# with the Iru macOS install/uninstall scripts.
 #
 # Two modes, chosen from the console user probe:
 #   e2e      : console user is a real login (e.g. runner) -> run full product
@@ -15,7 +15,8 @@
 #              and run the logic directly (sudoless) against the current user.
 #
 # Product scripts under jamf-pro/ and iru/ are never modified.
-# No macOS uninstall script exists; revert is done inline here.
+# Revert uses the product uninstall scripts; inline revert is only for the
+# initial state cleanup.
 # ============================================================
 
 set -uo pipefail
@@ -24,7 +25,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 DETECT_SH="$REPO_ROOT/iru/custom-scripts/detect-takumi-guard.sh"
 IRU_INSTALL_SH="$REPO_ROOT/iru/custom-scripts/install-takumi-guard-macos.sh"
+IRU_UNINSTALL_SH="$REPO_ROOT/iru/custom-scripts/uninstall-takumi-guard-macos.sh"
 JAMF_INSTALL_SH="$REPO_ROOT/jamf-pro/policies/install-takumi-guard.sh"
+JAMF_UNINSTALL_SH="$REPO_ROOT/jamf-pro/policies/uninstall-takumi-guard.sh"
 JAMF_EA_SH="$REPO_ROOT/jamf-pro/extension-attributes/takumi-guard-status.sh"
 
 NPM_EXPECTED="https://npm.flatt.tech"
@@ -89,21 +92,42 @@ run_detect() { # script_path
   fi
 }
 
+# Map a TG_STATUS:<npm>:<pip> line to the EA result string (same rules as the
+# EA wrapper). Used to emulate the wrapper in fallback mode.
+ea_from_status() { # status_line
+  local npm_s pip_s
+  npm_s=$(printf '%s' "$1" | cut -d: -f2)
+  pip_s=$(printf '%s' "$1" | cut -d: -f3)
+  if [ -z "$1" ]; then echo "<result>Error</result>"
+  elif [ "$npm_s" = "ng" ] || [ "$pip_s" = "ng" ]; then echo "<result>Not Configured</result>"
+  elif [ "$npm_s" = "ok" ] && [ "$pip_s" = "ok" ]; then echo "<result>Configured</result>"
+  elif [ "$npm_s" = "ok" ]; then echo "<result>Configured (npm only)</result>"
+  elif [ "$pip_s" = "ok" ]; then echo "<result>Configured (pip only)</result>"
+  else echo "<result>Not Applicable</result>"
+  fi
+}
+
 # Run the jamf EA and capture its <result>...</result> output.
 run_ea() { # script_path
   if [ "$MODE" = "e2e" ]; then
     bash "$1" 2>/dev/null
   else
-    # Emulate the EA wrapper around the extracted CHILD logic.
-    if child_body "$1" | bash >/dev/null 2>&1; then
-      echo "<result>Configured</result>"
-    else
-      echo "<result>Not Configured</result>"
-    fi
+    # Emulate the EA wrapper around the extracted CHILD logic (marker line).
+    ea_from_status "$(child_body "$1" | bash 2>/dev/null | grep '^TG_STATUS:' | tail -n1)"
   fi
 }
 
-# Run an install script (configure). Returns exit code.
+# EA assertion: any "Configured" variant counts as configured (pip may be
+# legitimately skipped on hosts where it is not usable). "Not Configured"
+# does not match the prefix.
+assert_ea_configured() { # name actual
+  case "$2" in
+    "<result>Configured"*) record "$1" "<result>Configured*" "$2" 0 ;;
+    *)                     record "$1" "<result>Configured*" "$2" 1 ;;
+  esac
+}
+
+# Run an install/uninstall script. Returns exit code.
 run_install() { # script_path
   if [ "$MODE" = "e2e" ]; then
     bash "$1" >/dev/null 2>&1; return $?
@@ -111,9 +135,10 @@ run_install() { # script_path
     child_body "$1" | bash >/dev/null 2>&1; return $?
   fi
 }
+run_uninstall() { run_install "$1"; }
 
-# Inline revert (no macOS uninstall script exists), in the same user context
-# the install scripts use.
+# Inline revert for the INITIAL state cleanup only (scenario reverts use the
+# product uninstall scripts), in the same user context the install scripts use.
 revert_config() {
   run_as_user 'command -v npm >/dev/null 2>&1 && npm config delete registry >/dev/null 2>&1; for c in pip3 pip; do command -v "$c" >/dev/null 2>&1 && { "$c" config unset global.index-url >/dev/null 2>&1; break; }; done; true'
 }
@@ -160,16 +185,15 @@ else
 fi
 
 # ============================================================
-# Scenario 4: configured -> iru audit exit 0 / jamf EA Configured
+# Scenario 4: configured -> iru audit exit 0 / jamf EA Configured*
 # ============================================================
 run_detect "$DETECT_SH"; assert_exit "4. iru audit (configured)" $? 0
-ea="$(run_ea "$JAMF_EA_SH")"; assert_eq "4. jamf EA (configured)" "<result>Configured</result>" "$ea"
+ea="$(run_ea "$JAMF_EA_SH")"; assert_ea_configured "4. jamf EA (configured)" "$ea"
 
 # ============================================================
-# Scenario 5: inline revert (same user context as install)
+# Scenario 5: jamf uninstall script -> exit 0
 # ============================================================
-revert_config
-record "5. inline revert" "npm delete / pip unset" "done" 0
+run_uninstall "$JAMF_UNINSTALL_SH"; assert_exit "5. jamf uninstall" $? 0
 
 # ============================================================
 # Scenario 6: reverted -> iru audit exit 1 / jamf EA Not Configured
@@ -178,14 +202,14 @@ run_detect "$DETECT_SH"; assert_exit "6. iru audit (reverted)" $? 1
 ea="$(run_ea "$JAMF_EA_SH")"; assert_eq "6. jamf EA (reverted)" "<result>Not Configured</result>" "$ea"
 
 # ============================================================
-# Scenario 7: Iru macOS install = same configure logic; one cycle
+# Scenario 7: Iru macOS install/uninstall = same logic; one cycle
 # ============================================================
 run_install "$IRU_INSTALL_SH"; assert_exit "7. iru install (configure)" $? 0
 assert_eq "7a. iru npm registry value" "$NPM_EXPECTED" "$(npm_registry | sed 's:/*$::')"
 run_detect "$DETECT_SH"; assert_exit "7b. iru audit (configured)" $? 0
-ea="$(run_ea "$JAMF_EA_SH")"; assert_eq "7c. jamf EA (iru configured)" "<result>Configured</result>" "$ea"
-revert_config
-run_detect "$DETECT_SH"; assert_exit "7d. iru audit (reverted)" $? 1
+ea="$(run_ea "$JAMF_EA_SH")"; assert_ea_configured "7c. jamf EA (iru configured)" "$ea"
+run_uninstall "$IRU_UNINSTALL_SH"; assert_exit "7d. iru uninstall" $? 0
+run_detect "$DETECT_SH"; assert_exit "7e. iru audit (reverted)" $? 1
 
 # ============================================================
 # Summary

@@ -40,6 +40,24 @@ asdf / pyenv / nvm などのバージョンマネージャーで**グローバ�
 asdf set -u python <version>   # asdf の例
 ```
 
+スキップの発生は、Jamf なら拡張属性の `Configured (npm only)` / `Configured (pip only)` / `Not Applicable` で、Intune / Iru ならコンソール出力の `SKIP:` 行で確認できます。
+
+### uv / poetry / yarn / pnpm / bun は保護される？
+
+されません。対象は npm と pip のみです。特に uv は pip の設定を参照しないため、別途対応が必要です（[設計方針](design.md#設定値固定) 参照）。
+
+### 設定を元に戻したい（解除）
+
+各 OS の解除スクリプトを実行してください（管理対象キーのみ削除し、ほかの設定は保持されます）:
+
+| OS | スクリプト |
+|------|------|
+| Windows | [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1) |
+| macOS (Jamf) | [uninstall-takumi-guard.sh](../jamf-pro/policies/uninstall-takumi-guard.sh) |
+| macOS (Iru) | [uninstall-takumi-guard-macos.sh](../iru/custom-scripts/uninstall-takumi-guard-macos.sh) |
+
+個人利用であれば `npm config delete registry` と `pip config unset global.index-url` の2コマンドでも同じです。
+
 ### `npm warn Unknown user config ...` が出る
 
 ユーザーの既存 `~/.npmrc` に npm が認識しないキーがある場合の警告で、本スクリプトとは無関係です（本スクリプトは既存キーを保持します）。動作への影響はありません。

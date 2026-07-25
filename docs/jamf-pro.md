@@ -41,11 +41,14 @@
 |------|------|
 | Display Name | `Configure Takumi Guard` |
 | Trigger | `Recurring Check-in` |
-| Execution Frequency | `Once per computer` |
+| Execution Frequency | `Ongoing` ← 必須 |
 | Scripts | `Install Takumi Guard` を追加（パラメータ入力は不要） |
+| Maintenance | `Update Inventory` を追加 |
 | Scope | `Takumi Guard - Not Configured`（手順3のグループ） |
 
 **Save** で完了。
+
+> `Ongoing` + Smart Group スコープの組み合わせで、設定が戻されたデバイスも自動修正されます（`Once per computer` だと一度成功したデバイスで二度と再実行されません）。`Update Inventory` により設定直後に拡張属性が更新され、スコープから即座に離脱します。
 
 ## 5. 完了確認（対象デバイスで実行）
 
@@ -54,7 +57,17 @@ npm config get registry            # -> https://npm.flatt.tech/
 pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
 ```
 
-インベントリ上は拡張属性 `Takumi Guard Status` が `Configured` になれば成功です。
+インベントリ上は拡張属性 `Takumi Guard Status` が `Configured` になれば成功です
+（`Configured (npm only)` 等の部分適合値の意味は [設計方針](design.md#検出仕様) 参照）。
+
+## 6. 解除（アンインストール）する場合
+
+対象から外すデバイスの設定を元に戻すには、解除スクリプトをポリシーとして実行します。
+
+| 設定項目 | 値 |
+|------|------|
+| Scripts > New | [uninstall-takumi-guard.sh](../jamf-pro/policies/uninstall-takumi-guard.sh) の内容を `Uninstall Takumi Guard` として登録 |
+| Policy | 上記スクリプトを追加し、解除対象グループにスコープして実行 |
 
 ---
 
