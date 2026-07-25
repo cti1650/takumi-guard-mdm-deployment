@@ -1,32 +1,23 @@
 <#
 .SYNOPSIS
-    Takumi Guard configuration script (Iru Custom Script - Windows)
+    Takumi Guard configuration (Iru Custom Script - Windows)
 .DESCRIPTION
-    Configures the npm / PyPI registry to Takumi Guard (anonymous mode).
-    Uses each package manager command, preserving other existing settings.
+    Sets npm registry / pip index-url to Takumi Guard (anonymous, fixed values)
+    via "npm config set" / "pip config set" so existing settings are preserved.
+    A package manager that is absent or cannot run is skipped.
+    Same logic as intune/remediation/install-takumi-guard.ps1; kept as a
+    separate file because each MDM uploads its own copy.
 .NOTES
-    MDM: Iru
-    Target OS: Windows 10/11
-    Execution context: logged-on user
-      (run in the user context so the user's own npm/pip settings are targeted)
-    Encoding: UTF-8 without BOM, ASCII-only comments (safe on Windows PowerShell 5.1)
+    Run in the logged-on user context (targets the user's own npm/pip settings).
+    Encoding: UTF-8 without BOM, ASCII only (Windows PowerShell 5.1 safe).
 #>
 
-# Takumi Guard anonymous registries (fixed values)
+# Fixed anonymous registries
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
 
-# Log to stdout (captured by Iru; no separate log file needed)
-function Write-Log {
-    param([string]$Level, [string]$Message)
-    Write-Output ("[{0}] [IRU] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message)
-}
-
-# Return the first *usable* command (must run --version successfully), or $null.
-# A version-manager shim (pyenv/nvm/asdf) with no version set exists on PATH but
-# fails to run, so probing --version filters it out. pip / pip3 share the per-user
-# config file, so resolving either one is enough.
-function Resolve-Command {
+# First candidate that exists and actually runs; $null if none.
+function Get-UsableCommand {
     param([string[]]$Candidates)
     foreach ($name in $Candidates) {
         if (Get-Command $name -ErrorAction SilentlyContinue) {
@@ -34,36 +25,24 @@ function Resolve-Command {
             if ($LASTEXITCODE -eq 0) { return $name }
         }
     }
-    return $null
 }
 
-function Set-Registry {
+# Warnings on stderr are captured and shown only when the command fails.
+function Set-Config {
     param([string]$Command, [string[]]$SetArgs, [string]$Label)
-    if (-not $Command) {
-        Write-Log "WARN" "$Label not installed - skipped"
-        return
-    }
-    # Capture output (incl. warnings on stderr); surface it only on failure.
+    if (-not $Command) { Write-Output "SKIP: $Label not usable"; return }
     $output = & $Command @SetArgs 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "$Label configuration failed (exit $LASTEXITCODE): $output" }
-    Write-Log "INFO" "$Label configured"
+    if ($LASTEXITCODE -ne 0) { throw "$Label configuration failed: $output" }
+    Write-Output "OK: $Label configured"
 }
 
 try {
-    Write-Log "INFO" "=== Takumi Guard Installation (Iru Windows) ==="
-
-    $npm = Resolve-Command @("npm")
-    $pip = Resolve-Command @("pip", "pip3")
-
-    Set-Registry -Command $npm -SetArgs @("config", "set", "registry", $NpmRegistry) -Label "npm"
-    Set-Registry -Command $pip -SetArgs @("config", "set", "global.index-url", $PypiIndex) -Label "PyPI"
-
-    Write-Log "COMPLIANCE" "Takumi Guard status: COMPLIANT"
-    Write-Log "INFO" "=== Takumi Guard Installation Complete ==="
+    Set-Config (Get-UsableCommand npm) @("config", "set", "registry", $NpmRegistry) "npm"
+    Set-Config (Get-UsableCommand pip, pip3) @("config", "set", "global.index-url", $PypiIndex) "pip"
+    Write-Output "SUCCESS: Takumi Guard configured"
     exit 0
 }
 catch {
-    Write-Log "ERROR" $_.Exception.Message
-    Write-Log "COMPLIANCE" "Takumi Guard status: FAILED"
+    Write-Error "ERROR: $_"
     exit 1
 }

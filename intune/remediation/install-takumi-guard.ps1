@@ -1,27 +1,21 @@
 <#
 .SYNOPSIS
-    Takumi Guard configuration script (Intune Remediation - Remediation)
+    Takumi Guard remediation (Intune Remediation - Remediation)
 .DESCRIPTION
-    Configures the npm / PyPI registry to Takumi Guard (anonymous mode).
-    Uses each package manager command (npm config set / pip config set), so it does
-    not edit .npmrc / pip.ini directly and preserves other existing settings.
+    Sets npm registry / pip index-url to Takumi Guard (anonymous, fixed values)
+    via "npm config set" / "pip config set" so existing settings are preserved.
+    A package manager that is absent or cannot run is skipped.
 .NOTES
-    MDM: Microsoft Intune
-    Target OS: Windows 10/11
-    Execution context: logged-on user
-    Encoding: UTF-8 without BOM, ASCII-only comments (safe on Windows PowerShell 5.1)
+    Run as the logged-on user ("Run using logged-on credentials" = Yes).
+    Encoding: UTF-8 without BOM, ASCII only (Windows PowerShell 5.1 safe).
 #>
 
-# Takumi Guard anonymous registries (fixed values)
-# Ref: https://shisho.dev/docs/ja/t/guard/quickstart/
+# Fixed anonymous registries
 $NpmRegistry = "https://npm.flatt.tech/"
 $PypiIndex   = "https://pypi.flatt.tech/simple/"
 
-# Return the first *usable* command (must run --version successfully), or $null.
-# A version-manager shim (pyenv/nvm/asdf) with no version set exists on PATH but
-# fails to run, so probing --version filters it out. pip / pip3 share the per-user
-# config file, so resolving either one is enough.
-function Resolve-Command {
+# First candidate that exists and actually runs; $null if none.
+function Get-UsableCommand {
     param([string[]]$Candidates)
     foreach ($name in $Candidates) {
         if (Get-Command $name -ErrorAction SilentlyContinue) {
@@ -29,35 +23,21 @@ function Resolve-Command {
             if ($LASTEXITCODE -eq 0) { return $name }
         }
     }
-    return $null
 }
 
-function Set-Registry {
+# Warnings on stderr are captured and shown only when the command fails.
+function Set-Config {
     param([string]$Command, [string[]]$SetArgs, [string]$Label)
-
-    if (-not $Command) {
-        Write-Output "SKIP: $Label not installed"
-        return
-    }
-
-    # Capture output (incl. warnings on stderr); surface it only on failure.
+    if (-not $Command) { Write-Output "SKIP: $Label not usable"; return }
     $output = & $Command @SetArgs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Label configuration failed (exit $LASTEXITCODE): $output"
-    }
-    Write-Output "SET: $Label configured"
+    if ($LASTEXITCODE -ne 0) { throw "$Label configuration failed: $output" }
+    Write-Output "OK: $Label configured"
 }
 
 try {
-    Write-Output "REMEDIATION: Starting Takumi Guard configuration"
-
-    $npm = Resolve-Command @("npm")
-    $pip = Resolve-Command @("pip", "pip3")
-
-    Set-Registry -Command $npm -SetArgs @("config", "set", "registry", $NpmRegistry) -Label "npm"
-    Set-Registry -Command $pip -SetArgs @("config", "set", "global.index-url", $PypiIndex) -Label "PyPI"
-
-    Write-Output "REMEDIATION SUCCESS: Takumi Guard configured"
+    Set-Config (Get-UsableCommand npm) @("config", "set", "registry", $NpmRegistry) "npm"
+    Set-Config (Get-UsableCommand pip, pip3) @("config", "set", "global.index-url", $PypiIndex) "pip"
+    Write-Output "REMEDIATION SUCCESS"
     exit 0
 }
 catch {
