@@ -1,9 +1,13 @@
 name: verify-scripts
 
-# 手動実行で MDM 配布スクリプトの E2E 検証を行う。
+# MDM 配布スクリプトの E2E 検証を行う。
 # 検証内容: (1) 状態別の検知動作 (2) PM インストール前後の検知 (3) 修復による
 # 設定投入の完了確認 (4) 対象除外 (アンインストール/revert) による設定解除。
 # ビルド成果物は無く、製品スクリプト (intune/ iru/ jamf-pro/) をそのまま実行する。
+#
+# トリガー:
+#   - 手動実行 (target で対象 OS を選択)
+#   - 関連スクリプト変更時の push (main) / pull_request では両 OS を自動実行
 on:
   workflow_dispatch:
     inputs:
@@ -16,16 +20,39 @@ on:
           - all
           - windows
           - macos
+  push:
+    branches: [main]
+    paths:
+      - "intune/**"
+      - "jamf-pro/**"
+      - "iru/**"
+      - "scripts/run-windows-verify.ps1"
+      - "scripts/run-macos-verify.sh"
+      - ".github/workflows/verify-scripts.yml"
+  pull_request:
+    paths:
+      - "intune/**"
+      - "jamf-pro/**"
+      - "iru/**"
+      - "scripts/run-windows-verify.ps1"
+      - "scripts/run-macos-verify.sh"
+      - ".github/workflows/verify-scripts.yml"
 
 permissions:
   contents: read
+
+# 連続 push 時は古い実行をキャンセルして最新のみ検証する
+concurrency:
+  group: verify-scripts-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ============================================================
   # Windows: Intune / Iru スクリプトを本番同等の PowerShell 5.1 で検証
   # ============================================================
   verify-windows:
-    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
+    # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -52,7 +79,8 @@ jobs:
   #   フォールバックする。どちらで走ったかはサマリーに明記する。
   # ============================================================
   verify-macos:
-    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'macos' }}
+    # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'macos' }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:

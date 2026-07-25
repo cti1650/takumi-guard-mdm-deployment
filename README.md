@@ -1,133 +1,53 @@
 # Takumi Guard MDM Deployment Scripts
 
-Takumi Guard (GMO Flatt Security) のMDM配布用スクリプト集。
-Intune、Jamf Pro、Iru (旧Kandji) で **npm / PyPI** のレジストリ設定を検出・投入できます。
+[Takumi Guard](https://shisho.dev/docs/ja/t/guard/) (GMO Flatt Security) の **npm / PyPI** レジストリ設定を、MDM から各デバイスへ配布するスクリプト集です。
 
-## 対象パッケージマネージャー
+- 匿名利用の固定値をスクリプトに内蔵 — **MDM 側での URL・トークン・パラメータ入力は不要**（[あえて匿名利用にしている理由](docs/design.md#なぜ匿名利用か)）
+- `npm config` / `pip config` の標準コマンドで設定するため、**既存の設定を上書きしません**
+- 対象はログオンユーザーの設定（userロール）。未導入のパッケージマネージャーは自動スキップ
 
-匿名利用のため固定値を使用します（トークン・アカウント登録は不要）。
+| 対象 | 設定される値 |
+|------|------|
+| npm | `registry=https://npm.flatt.tech/` |
+| PyPI (pip) | `index-url=https://pypi.flatt.tech/simple/` |
 
-| 対象 | 設定コマンド | レジストリ（固定値） |
-|------|--------------|----------------------|
-| **npm** | `npm config set registry <URL>` | `https://npm.flatt.tech/` |
-| **PyPI (pip)** | `pip config set global.index-url <URL>` | `https://pypi.flatt.tech/simple/` |
+> **個人で設定するだけなら MDM は不要です。** 以下の2コマンドで完了します:
+>
+> ```bash
+> npm config set registry https://npm.flatt.tech/
+> pip config set global.index-url https://pypi.flatt.tech/simple/
+> ```
+>
+> 本リポジトリは、この設定を MDM 経由で組織のデバイスへ配布・維持するためのものです。
 
-> 設定・検出はいずれも各パッケージマネージャーの標準コマンドで行います。
-> `.npmrc` / `pip.ini` を直接編集しないため、既存の設定を上書きしません。
+## セットアップ
 
-## 対応MDM
+各手順ページの表をコピペするだけで完結します。
 
-| MDM | 対象OS | 検出方法 | 設定投入方法 |
-|-----|--------|----------|--------------|
-| **Intune** | Windows | Remediation Detection Script | Remediation Script |
-| **Jamf Pro** | macOS | Extension Attribute | Policy Script |
-| **Iru** | macOS/Windows | Audit Script | Custom Script |
+| MDM | 対象OS | 手順ページ |
+|-----|--------|------|
+| **Intune** | Windows | [docs/intune.md](docs/intune.md) |
+| **Jamf Pro** | macOS | [docs/jamf-pro.md](docs/jamf-pro.md) |
+| **Iru (旧Kandji)** | macOS/Windows | [docs/iru.md](docs/iru.md) |
+
+詳細（設計方針・トラブルシューティング・Intune Win32配布）は [docs/deployment-guide.md](docs/deployment-guide.md) から。
 
 ## ディレクトリ構成
 
 ```
 .
-├── intune/
-│   ├── detection/          # 検出スクリプト
-│   └── remediation/        # 修復スクリプト
-├── jamf-pro/
-│   ├── extension-attributes/  # 拡張属性
-│   ├── policies/              # ポリシースクリプト
-│   └── profiles/              # 構成プロファイル
-├── iru/
-│   ├── blueprints/         # ブループリント設定
-│   └── custom-scripts/     # カスタムスクリプト
-└── common/
-    └── config-template.yaml  # 設定テンプレート（参照用・編集不要）
+├── intune/        # Intune 用（検出 / 修復 / アンインストール）
+├── jamf-pro/      # Jamf Pro 用（拡張属性 / ポリシー）
+├── iru/           # Iru 用（カスタムスクリプト / 監査）
+├── docs/          # セットアップ手順・詳細ドキュメント
+└── scripts/       # intunewin ビルド・CI 検証用
 ```
 
-## 実行コンテキスト（重要）
+## CI
 
-対象はログオンユーザーの npm/pip 設定です。そのため:
+- **verify-scripts** — Windows (PowerShell 5.1) / macOS の実機ランナー上で、検出→投入→解除の全状態遷移を E2E 検証（関連スクリプト変更時の push / PR で自動実行。Actions から手動実行も可能）
+- **build-intunewin** — Intune Win32 配布用の `.intunewin` パッケージをビルド（Actions から手動実行）
 
-- **Windows (Intune/Iru)**: ログオンユーザーのコンテキストで実行してください
-  （Intune の場合は "Run this script using the logged-on credentials" = Yes）。
-- **macOS (Jamf/Iru)**: root で実行されますが、スクリプトが自動的にコンソール
-  ログイン中のユーザー権限でコマンドを実行します。
+## License
 
-npm / pip が未インストールの場合、そのパッケージマネージャーはスキップされます
-（設定対象がないため検出上も対象外扱い）。
-
----
-
-## MDM別セットアップ
-
-各MDMの検出スクリプト・設定投入スクリプトと詳細な登録手順は、媒体別ドキュメントを参照してください。
-
-| MDM | 対象OS | ドキュメント | 主なファイル |
-|-----|--------|--------------|--------------|
-| **Intune** | Windows | [docs/intune.md](docs/intune.md) | [detect](intune/detection/detect-takumi-guard.ps1) / [install](intune/remediation/install-takumi-guard.ps1) |
-| **Jamf Pro** | macOS | [docs/jamf-pro.md](docs/jamf-pro.md) | [status](jamf-pro/extension-attributes/takumi-guard-status.sh) / [install](jamf-pro/policies/install-takumi-guard.sh) |
-| **Iru (旧Kandji)** | macOS/Windows | [docs/iru.md](docs/iru.md) | [detect](iru/custom-scripts/detect-takumi-guard.sh) / [macOS](iru/custom-scripts/install-takumi-guard-macos.sh) / [Windows](iru/custom-scripts/install-takumi-guard-windows.ps1) |
-
-共通事項・検証手順は [docs/deployment-guide.md](docs/deployment-guide.md) を参照。
-
----
-
-## 段階的展開
-
-### Phase 1: 検出のみ
-
-各MDMの検出スクリプト/拡張属性のみを登録し、現状把握を行う。
-
-### Phase 2: パイロットグループ
-
-少数のテストデバイスに設定投入スクリプトを適用。
-
-### Phase 3: 全体展開
-
-対象グループを拡大して全デバイスに展開。
-
----
-
-## トラブルシューティング
-
-### ログの確認
-
-スクリプトの出力は各MDMのコンソールで確認できます（専用ログファイルは残しません）。
-
-- **Intune**: Devices > Scripts and remediations の出力
-- **Jamf Pro**: ポリシー実行ログ（Computer > History > Policy Logs）
-- **Iru**: カスタムスクリプトの実行結果（Iru Console）
-
-### 手動テスト
-
-```bash
-# npm / PyPI の現在値を確認
-npm config get registry            # -> https://npm.flatt.tech/
-pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
-```
-
-### 動作確認
-
-```bash
-# 悪性パッケージのブロックテスト（403 になれば正常）
-npm install <known-malicious-package>
-pip install <known-malicious-package>
-```
-
----
-
-## CI (スクリプト検証)
-
-GitHub Actions の **verify-scripts** ワークフロー（Actions タブから手動実行、入力 `target` で all / windows / macos を選択）で、配布スクリプトの E2E 検証を行います。
-
-- **Windows** (`windows-latest`, PowerShell 5.1): PM 不可視 → 未設定 → 修復投入 → 設定済み → アンインストール → 解除の状態遷移を検証し、各段階の検出 exit code と `npm/pip` の実値を固定値・デフォルト値と照合します（Iru Windows スクリプトも 1 サイクル確認）。
-- **macOS** (`macos-latest`): コンソールユーザーが有効なら製品スクリプトを sudo でフル実行、無効なら CHILD ヒアドキュメント抽出モードにフォールバックし、iru audit / jamf EA の状態遷移（Not Configured ⇔ Configured）を検証します。macOS にアンインストールスクリプトは無いため、解除は CI 内でインライン revert します。
-
-各ステップの期待値・実績は実行サマリー（Step Summary）に表形式で出力されます。
-
----
-
-## 参考リンク
-
-- [Takumi Guard 公式ドキュメント](https://shisho.dev/docs/ja/t/guard/)
-- [Takumi Guard クイックスタート (npm)](https://shisho.dev/docs/ja/t/guard/quickstart/npm/)
-- [Takumi Guard クイックスタート (PyPI)](https://shisho.dev/docs/ja/t/guard/quickstart/pypi/)
-- [Intune Remediation Scripts](https://learn.microsoft.com/mem/intune/fundamentals/remediations)
-- [Jamf Pro Scripts](https://docs.jamf.com/jamf-pro/documentation/Scripts.html)
+[MIT](LICENSE)
