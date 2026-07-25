@@ -69,7 +69,7 @@ Intune の実行エンジンは **Windows PowerShell 5.1** です。BOM なし U
 
 ## 品質保証（CI）
 
-GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフロー（手動実行）が、windows-latest（PowerShell 5.1）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
+GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフローが、windows-latest（PowerShell 5.1）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。関連スクリプト（`intune/` `jamf-pro/` `iru/` と検証ヘルパー）に変更があった push (main) / pull_request で自動実行され、Actions からの手動実行（対象 OS 選択可）にも対応します。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
 
 ---
 
