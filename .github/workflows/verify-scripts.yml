@@ -1,0 +1,80 @@
+name: verify-scripts
+
+# 手動実行で MDM 配布スクリプトの E2E 検証を行う。
+# 検証内容: (1) 状態別の検知動作 (2) PM インストール前後の検知 (3) 修復による
+# 設定投入の完了確認 (4) 対象除外 (アンインストール/revert) による設定解除。
+# ビルド成果物は無く、製品スクリプト (intune/ iru/ jamf-pro/) をそのまま実行する。
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "検証対象 OS"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - windows
+          - macos
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================
+  # Windows: Intune / Iru スクリプトを本番同等の PowerShell 5.1 で検証
+  # ============================================================
+  verify-windows:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show tool versions
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion
+          npm --version
+          pip --version
+
+      # 製品スクリプトは Intune / Iru と同じ Windows PowerShell 5.1 (pwsh ではない)
+      # で実行する。scripts/run-windows-verify.ps1 が状態遷移シナリオ全体を回し、
+      # 期待/実績を GITHUB_STEP_SUMMARY に表出力する。
+      - name: Run Windows verify scenario
+        shell: powershell
+        run: .\scripts\run-windows-verify.ps1
+        timeout-minutes: 15
+
+  # ============================================================
+  # macOS: Jamf Pro / Iru スクリプトを検証
+  #   コンソールユーザーが有効なら sudo フル実行 (E2E)、無効なら CHILD 抽出に
+  #   フォールバックする。どちらで走ったかはサマリーに明記する。
+  # ============================================================
+  verify-macos:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'macos' }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show tool versions
+        run: |
+          sw_vers
+          uname -m
+          node --version || true
+          npm --version || true
+          python3 --version || true
+          pip3 --version || true
+
+      - name: Probe console user
+        run: |
+          CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null)
+          echo "console user = '${CONSOLE_USER}'"
+          echo "CONSOLE_USER=${CONSOLE_USER}" >> "$GITHUB_ENV"
+
+      - name: Run macOS verify scenario
+        run: |
+          chmod +x scripts/run-macos-verify.sh
+          ./scripts/run-macos-verify.sh
+        timeout-minutes: 15

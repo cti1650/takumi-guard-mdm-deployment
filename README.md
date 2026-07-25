@@ -113,6 +113,17 @@ pip install <known-malicious-package>
 
 ---
 
+## CI (スクリプト検証)
+
+GitHub Actions の **verify-scripts** ワークフロー（Actions タブから手動実行、入力 `target` で all / windows / macos を選択）で、配布スクリプトの E2E 検証を行います。
+
+- **Windows** (`windows-latest`, PowerShell 5.1): PM 不可視 → 未設定 → 修復投入 → 設定済み → アンインストール → 解除の状態遷移を検証し、各段階の検出 exit code と `npm/pip` の実値を固定値・デフォルト値と照合します（Iru Windows スクリプトも 1 サイクル確認）。
+- **macOS** (`macos-latest`): コンソールユーザーが有効なら製品スクリプトを sudo でフル実行、無効なら CHILD ヒアドキュメント抽出モードにフォールバックし、iru audit / jamf EA の状態遷移（Not Configured ⇔ Configured）を検証します。macOS にアンインストールスクリプトは無いため、解除は CI 内でインライン revert します。
+
+各ステップの期待値・実績は実行サマリー（Step Summary）に表形式で出力されます。
+
+---
+
 ## 参考リンク
 
 - [Takumi Guard 公式ドキュメント](https://shisho.dev/docs/ja/t/guard/)
