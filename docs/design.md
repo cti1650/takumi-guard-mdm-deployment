@@ -31,7 +31,8 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 
 ## 実行コンテキスト
 
-- **Windows (Intune/Iru)**: ログオンユーザーのコンテキストで実行が必須。Microsoft は多くの修復で SYSTEM を推奨していますが、本スクリプトはユーザーの npm/pip 設定が対象のため、SYSTEM 実行では意味がありません。Intune では「Run this script using the logged-on credentials = Yes」がこれに当たります
+- **Windows (Intune)**: ログオンユーザーのコンテキストで実行が必須。Microsoft は多くの修復で SYSTEM を推奨していますが、本スクリプトはユーザーの npm/pip 設定が対象のため、SYSTEM 実行では意味がありません。Intune では「Run this script using the logged-on credentials = Yes」がこれに当たります
+- **Windows (Iru)**: Iru のカスタムスクリプトには実行ユーザーを指定する設定項目が公式ドキュメントに見当たらず（Windows 固有の設定は `Execute In` = 64/32 bit のみ）、システムコンテキストで実行されるとされています。その場合ログオンユーザーの設定には反映されないため、**Windows は Intune 経由での配布を推奨**します（Iru を使う場合は事前検証が必要）
 - **macOS (Jamf/Iru)**: MDM からは root で実行されますが、スクリプト内で `stat -f "%Su" /dev/console` によりコンソールログイン中のユーザーを特定し、`sudo -u <user> bash -l` の1回の呼び出しで全処理をユーザー権限・ログインシェル環境（PATH 解決込み）で実行します。Homebrew パス（`/opt/homebrew/bin`, `/usr/local/bin`）のフォールバックも追加しています
 
 ## 検出仕様
@@ -51,7 +52,7 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 |------|------|
 | Intune | Remediation のスケジュール（Daily 推奨）ごとに検出 → 非適合なら修復を再実行 |
 | Jamf Pro | インベントリ更新で拡張属性が `Not Configured` に戻る → Smart Group に再加入 → **Ongoing** ポリシーが再実行。`Once per computer` では再実行されないため必ず `Ongoing` を使用し、ポリシーに `Update Inventory` を含めて設定直後にスコープから離脱させます |
-| Iru | Audit & Remediation のサイクルで監査（exit 1）→ Remediation スクリプトを再実行 |
+| Iru | Custom Script の Execution Frequency（`Run daily` / `Run every 15 min`）ごとに Audit Script を実行し、非 0 終了なら Remediation Script を実行。`Install once per device` は Pass 到達後に再実行されないため使用しません |
 
 ## 投入・解除の仕様
 

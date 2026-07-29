@@ -16,6 +16,8 @@ Remediations に検出・修復スクリプトを登録します。**貼り付�
 | 設定項目 | 値 |
 |------|------|
 | Name | `Takumi Guard Configuration` |
+| Description | `npm / PyPI のパッケージ取得を Takumi Guard 経由に設定します。`（任意） |
+| Publisher | 既定のまま（自分の名前が入ります・任意） |
 | Detection script file | `detect-takumi-guard.ps1` をアップロード |
 | Remediation script file | `install-takumi-guard.ps1` をアップロード |
 | Run this script using the logged-on credentials | **Yes** ← 必須 |
