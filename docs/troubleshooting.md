@@ -66,6 +66,14 @@ asdf set -u python <version>   # asdf の例
 
 [Win32アプリ配布](intune-win32.md) を参照してください（署名なしで運用できる代替手順と、回避できないケースの見分け方を記載）。
 
+### Iru の Windows でスクリプトは成功するのに設定が反映されない
+
+Iru のカスタムスクリプトはシステムコンテキストで実行されるとされており（実行ユーザーを指定する設定項目が公式ドキュメントに見当たりません）、その場合システムアカウント側の npm/pip 設定が変更され、ログオンユーザーには反映されません。Windows は [Intune 経由での配布](intune.md)（`Run this script using the logged-on credentials = Yes`）を推奨します。
+
+### Iru で設定が戻されたまま再修正されない
+
+Custom Script の **Execution Frequency** が `Install once per device` になっていないか確認してください。この設定は Pass に到達した時点で再実行されなくなります。ドリフト修正には `Run daily`（または `Run every 15 min`）を使用します。
+
 ### macOS で「No console user session」エラー
 
 画面ロック中やログインユーザー不在のタイミングで実行された場合に発生します。ユーザーがログインしている状態で再実行されれば成功します（Jamf の Recurring Check-in / Iru の監査サイクルで自動リトライされます）。

@@ -37,15 +37,58 @@ Intune admin center > **Apps** > **Windows** > **Add** > **Windows app (Win32)**
 
 | 設定項目 | 値 |
 |------|------|
+### Select app package file
+
+| 設定項目 | 値 |
+|------|------|
 | App package file | `install-takumi-guard.intunewin` をアップロード |
+
+### App information
+
+| 設定項目 | 値 |
+|------|------|
+| Name | `Takumi Guard Configuration` |
+| Description | `npm / PyPI のパッケージ取得を Takumi Guard 経由に設定し、悪性パッケージをブロックします。` |
+| Publisher | 自組織名（例: `IT 部門`） |
+| App Version | `1.0`（任意） |
+| Category | 未設定のままで可 |
+| Show this as a featured app in the Company Portal | `No` |
+| Information URL | `https://shisho.dev/docs/ja/t/guard/`（任意） |
+| Logo | 未設定のままで可 |
+
+> Name / Description / Publisher は必須項目です。それ以外は空欄のままでも登録できます。
+
+### Program
+
+| 設定項目 | 値 |
+|------|------|
 | Install command | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-takumi-guard.ps1` |
 | Uninstall command | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File uninstall-takumi-guard.ps1` |
 | Install behavior | **User** ← 必須 |
-| Requirements | OS アーキテクチャ・最低OSバージョンを環境に合わせて指定 |
-| Detection rules | **Use a custom detection script** = [detect-takumi-guard.ps1](../intune/detection/detect-takumi-guard.ps1) |
-| Run script as 32-bit process on 64-bit clients | No |
-| Enforce script signature check | No |
-| Assignments | 対象グループに **Required** |
+| Device restart behavior | `No specific action` |
+| Return codes | 既定のまま（`0` = Success） |
+
+### Requirements
+
+| 設定項目 | 値 |
+|------|------|
+| Operating system architecture | `x64`（Arm64 端末があれば併せてチェック） |
+| Minimum operating system | `Windows 10 1607` |
+
+### Detection rules
+
+| 設定項目 | 値 |
+|------|------|
+| Rules format | `Use a custom detection script` |
+| Script file | [detect-takumi-guard.ps1](../intune/detection/detect-takumi-guard.ps1) |
+| Run script as 32-bit process on 64-bit clients | `No` |
+| Enforce script signature check and run script silently | `No` |
+
+### Assignments
+
+| 設定項目 | 値 |
+|------|------|
+| Required | 対象グループを追加 |
 
 ## 検出ルールの挙動
 

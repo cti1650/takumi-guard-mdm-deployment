@@ -74,11 +74,25 @@ $uninstallCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File uninsta
 # Takumi Guard - Intune Win32 app configuration
 # Generated (UTC): $((Get-Date).ToUniversalTime().ToString('o'))
 
-Install behavior : User
-Install command  : $installCmd
-Uninstall command: $uninstallCmd
+[App information]  (Name / Description / Publisher are required)
+  Name        : Takumi Guard Configuration
+  Description : Routes npm / PyPI package downloads through Takumi Guard to block malicious packages.
+  Publisher   : <your organization, e.g. IT Department>
+  App Version : 1.0
+  Information URL: https://shisho.dev/docs/ja/t/guard/
 
-Detection rule   : Use a custom detection script = detect-takumi-guard.ps1
+[Program]
+  Install behavior : User
+  Install command  : $installCmd
+  Uninstall command: $uninstallCmd
+  Device restart behavior: No specific action
+
+[Requirements]
+  Operating system architecture: x64 (add Arm64 if applicable)
+  Minimum operating system    : Windows 10 1607
+
+[Detection rules]
+  Rules format: Use a custom detection script = detect-takumi-guard.ps1
   Run script as 32-bit process on 64-bit clients: No
   Enforce script signature check                : No
 
