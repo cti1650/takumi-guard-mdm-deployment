@@ -28,6 +28,7 @@ GitHub Actions でビルドします（ローカルに Windows 環境は不要�
 2. 完了後、アーティファクト **`takumi-guard-intunewin`** をダウンロード
    - `install-takumi-guard.intunewin` … 手順2でアップロードするパッケージ
    - `intune-config.txt` … 手順2で貼り付けるコマンド類の転記メモ
+   - `install-takumi-guard-wsl.intunewin` / `intune-config-wsl.txt` … WSL も保護する場合の2つ目のアプリ用（[後述](#wsl-も保護する場合任意2つ目のアプリ)）
 
 ローカル（Windows）でビルドする場合: `.\scripts\build-intunewin.ps1`（`output\` に生成）
 
@@ -98,6 +99,21 @@ Win32 のカスタム検出スクリプトは「終了コード 0 かつ STDOUT 
 - 未設定 → `Exit 1` → 未インストールと判定 → インストールコマンド実行
 
 ユーザーが設定を戻しても次回の検出評価（IME チェックイン毎、概ね24時間間隔）で再設定される、**ドリフト自動修正**として機能します。
+
+## WSL も保護する場合（任意・2つ目のアプリ）
+
+`install-takumi-guard-wsl.intunewin` を **別の Win32 アプリ**として追加登録します（[WSL の扱い](design.md#wsl-の扱いwindows任意) 参照）。設定は上記と同じで、以下だけ差し替えます（転記メモは `intune-config-wsl.txt`）。
+
+| 設定項目 | 値 |
+|------|------|
+| App package file | `install-takumi-guard-wsl.intunewin` をアップロード |
+| Name | `Takumi Guard Configuration (WSL)` |
+| Install command | `%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-takumi-guard-wsl.ps1` |
+| Uninstall command | `%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File uninstall-takumi-guard-wsl.ps1` |
+| Detection rules の Script file | [detect-takumi-guard-wsl.ps1](../intune/detection/detect-takumi-guard-wsl.ps1)（`Run script as 32-bit process` = `No` のまま） |
+
+- **Sysnative 経由が必須です**: `wsl.exe` は 64-bit の System32 にしか存在せず、Intune エージェントはインストールコマンドを 32-bit プロセスから起動するため、既存アプリのように 32-bit `powershell.exe` のままでは動作しません
+- WSL 未導入のデバイスは検出スクリプトが `COMPLIANT (no WSL distribution)`（Exit 0 + 出力あり）を返すため「インストール済み」と判定され、インストールコマンドは実行されません（対象グループに含めて問題ありません）
 
 ## 補足
 
