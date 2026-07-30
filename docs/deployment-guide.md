@@ -4,7 +4,7 @@
 
 | MDM | 対象OS | 手順 |
 |-----|--------|------|
-| **Intune** | Windows | [intune.md](intune.md) |
+| **Intune** | Windows（WSL 内の保護も任意で可） | [intune.md](intune.md) |
 | **Jamf Pro** | macOS | [jamf-pro.md](jamf-pro.md) |
 | **Iru (旧Kandji)** | macOS/Windows | [iru.md](iru.md) |
 

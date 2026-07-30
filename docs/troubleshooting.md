@@ -53,6 +53,7 @@ asdf set -u python <version>   # asdf の例
 | OS | スクリプト |
 |------|------|
 | Windows | [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1) |
+| WSL | [uninstall-takumi-guard-wsl.ps1](../intune/uninstall/uninstall-takumi-guard-wsl.ps1) |
 | macOS (Jamf) | [uninstall-takumi-guard.sh](../jamf-pro/policies/uninstall-takumi-guard.sh) |
 | macOS (Iru) | [uninstall-takumi-guard-macos.sh](../iru/custom-scripts/uninstall-takumi-guard-macos.sh) |
 

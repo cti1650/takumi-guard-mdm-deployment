@@ -8,6 +8,8 @@ Remediations に検出・修復スクリプトを登録します。**貼り付�
 |------|------|
 | 検出 | [detect-takumi-guard.ps1](../intune/detection/detect-takumi-guard.ps1) |
 | 修復 | [install-takumi-guard.ps1](../intune/remediation/install-takumi-guard.ps1) |
+| 検出 (WSL・任意) | [detect-takumi-guard-wsl.ps1](../intune/detection/detect-takumi-guard-wsl.ps1) |
+| 修復 (WSL・任意) | [install-takumi-guard-wsl.ps1](../intune/remediation/install-takumi-guard-wsl.ps1) |
 
 ## 2. Remediation を作成
 
@@ -39,6 +41,28 @@ Remediations に検出・修復スクリプトを登録します。**貼り付�
 npm config get registry            # -> https://npm.flatt.tech/
 pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
 ```
+
+## 5. WSL も保護する場合（任意・2つ目の Remediation）
+
+WSL 内の npm / pip は Windows 側の設定を参照しないため、保護する場合は WSL 用の Remediation を**追加で**作成します（理由と動作は[設計方針](design.md#wsl-の扱いwindows任意)を参照）。手順2と同じ流れで、以下だけ差し替えます。
+
+| 設定項目 | 値 |
+|------|------|
+| Name | `Takumi Guard Configuration (WSL)` |
+| Detection script file | `detect-takumi-guard-wsl.ps1` をアップロード |
+| Remediation script file | `install-takumi-guard-wsl.ps1` をアップロード |
+| そのほかの項目 | 手順2と同じ（logged-on credentials = **Yes** / 64-bit PowerShell = **Yes** がいずれも必須） |
+
+WSL 未導入のデバイスを含むグループへ配布しても問題ありません（WSL がなければ `COMPLIANT (no WSL distribution)` で適合になります）。
+
+完了確認（対象デバイスの WSL 内で実行）:
+
+```bash
+npm config get registry            # -> https://npm.flatt.tech/
+pip config get global.index-url    # -> https://pypi.flatt.tech/simple/
+```
+
+解除する場合は [uninstall-takumi-guard-wsl.ps1](../intune/uninstall/uninstall-takumi-guard-wsl.ps1) を使用します。
 
 ---
 
