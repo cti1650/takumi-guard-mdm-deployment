@@ -35,6 +35,21 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 - **Windows (Iru)**: Iru のカスタムスクリプトには実行ユーザーを指定する設定項目が公式ドキュメントに見当たらず（Windows 固有の設定は `Execute In` = 64/32 bit のみ）、システムコンテキストで実行されるとされています。その場合ログオンユーザーの設定には反映されないため、**Windows は Intune 経由での配布を推奨**します（Iru を使う場合は事前検証が必要）
 - **macOS (Jamf/Iru)**: MDM からは root で実行されますが、スクリプト内で `stat -f "%Su" /dev/console` によりコンソールログイン中のユーザーを特定し、`sudo -u <user> bash -l` の1回の呼び出しで全処理をユーザー権限・ログインシェル環境（PATH 解決込み）で実行します。Homebrew パス（`/opt/homebrew/bin`, `/usr/local/bin`）のフォールバックも追加しています
 
+## WSL の扱い（Windows・任意）
+
+WSL 内の npm / pip は Linux 側のユーザー設定（`~/.npmrc` / `~/.config/pip/pip.conf`）を参照し、Windows 側の設定を一切引き継ぎません。保護する場合は WSL 専用スクリプト（[検出](../intune/detection/detect-takumi-guard-wsl.ps1) / [修復](../intune/remediation/install-takumi-guard-wsl.ps1) / [解除](../intune/uninstall/uninstall-takumi-guard-wsl.ps1)）を **2つ目の Remediation** として登録します（[手順](intune.md#5-wsl-も保護する場合任意2つ目の-remediation)）。既存スクリプトに混ぜず分離しているのは、WSL 起因の失敗や SKIP が Windows 本体の適合状態の報告を汚さないようにするためです。
+
+| 論点 | 実装 |
+|------|------|
+| 実行コンテキスト | ログオンユーザー実行が必須。WSL ディストリビューションはユーザー単位に登録され（`HKCU\Lxss`）、SYSTEM からは参照できないため（[本家ドキュメント](https://shisho.dev/docs/ja/t/guard/features/admin-deployment/)にも同旨の制約が明記）。同じ理由でシステムコンテキスト実行の Iru (Windows) では配布不可 |
+| 64-bit 必須 | `wsl.exe` は 64-bit の System32 にのみ存在するため「Run script in 64-bit PowerShell = Yes」が必須（既存手順の設定と同一） |
+| 文字コード | `wsl.exe` の出力は既定で UTF-16LE。`WSL_UTF8=1` で UTF-8 を要求しつつ、旧バージョン向けに NUL バイト除去も併用 |
+| 列挙と除外 | `wsl --list --quiet` で列挙し、コンテナツール内部用の `docker-desktop` / `rancher-desktop` / `podman-*` は除外 |
+| WSL 内の実行 | `wsl -d <distro> --exec sh -lc '<POSIXスクリプト>'`。ログインシェルで PATH を解決（macOS 版の `bash -l` と同じ理屈）。埋め込みスクリプトはダブルクォート不使用の1行 POSIX sh で、PowerShell 5.1 の引数エスケープ問題を回避 |
+| interop 除外 | WSL は既定で Windows の PATH を取り込むため、`/mnt/` 配下に解決される npm / pip（Windows 側の実体）は誤検出・二重設定防止のため対象外として除外 |
+| スキップ規則 | 既存と同じ「未導入・実行不能 = 対象外(適合)」。`sh` を起動できないディストリビューションも SKIP（コンソール出力で確認可能）。nvm 等を `.bashrc`（対話シェルでのみ読込）だけで初期化している構成では npm が見えず SKIP になり得ます |
+| CI | GitHub ホステッドの Windows ランナーは WSL2 を実行できないため verify-scripts の対象外。検証は WSL 導入済みの実機で実施 |
+
 ## 検出仕様
 
 | スクリプト | 結果の返し方 |
@@ -57,7 +72,7 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 ## 投入・解除の仕様
 
 - 投入: `npm config set registry` / `pip config set global.index-url`。パッケージマネージャーの警告（stderr）は成功時は表示せず、失敗時のみエラー詳細として出力します
-- 解除: `npm config delete registry` / `pip config unset global.index-url`。管理対象キーのみ削除し、ほかの設定は保持します。Windows は [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1)、macOS は [Jamf 用](../jamf-pro/policies/uninstall-takumi-guard.sh) / [Iru 用](../iru/custom-scripts/uninstall-takumi-guard-macos.sh) を提供
+- 解除: `npm config delete registry` / `pip config unset global.index-url`。管理対象キーのみ削除し、ほかの設定は保持します。Windows は [uninstall-takumi-guard.ps1](../intune/uninstall/uninstall-takumi-guard.ps1)、WSL は [uninstall-takumi-guard-wsl.ps1](../intune/uninstall/uninstall-takumi-guard-wsl.ps1)、macOS は [Jamf 用](../jamf-pro/policies/uninstall-takumi-guard.sh) / [Iru 用](../iru/custom-scripts/uninstall-takumi-guard-macos.sh) を提供
 
 ## Windows の文字コード
 
