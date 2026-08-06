@@ -72,13 +72,13 @@ Write-Host "Repo: $Repo"
 # ------------------------------------------------------------------
 $MinimalPath = "C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
 $rc = Invoke-Script $Detect @{ PATH = $MinimalPath }
-Assert-Exit "1. detect (PM invisible)" $rc 0
+Assert-Exit "1. detect (PM invisible = out of scope, compliant)" $rc 0
 
 # ------------------------------------------------------------------
 # Scenario 2: normal PATH, PMs present but unconfigured -> detect exit 1
 # ------------------------------------------------------------------
 $rc = Invoke-Script $Detect $null
-Assert-Exit "2. detect (unconfigured)" $rc 1
+Assert-Exit "2. detect (unconfigured -> flagged; exit 1 is correct)" $rc 1
 
 # ------------------------------------------------------------------
 # Scenario 3: remediation -> exit 0, then assert real values match
@@ -107,7 +107,7 @@ Assert-Exit "5. uninstall" $rc 0
 # Scenario 6: detect after uninstall -> exit 1, npm back to default
 # ------------------------------------------------------------------
 $rc = Invoke-Script $Detect $null
-Assert-Exit "6. detect (reverted)" $rc 1
+Assert-Exit "6. detect (reverted -> flagged; exit 1 is correct)" $rc 1
 
 $npm = Get-NpmRegistry
 Add-Step "6a. npm registry default" $NpmDefault $npm ($npm -eq $NpmDefault)
@@ -131,7 +131,7 @@ $rc = Invoke-Script $Uninst $null
 Assert-Exit "7d. iru revert (uninstall)" $rc 0
 
 $rc = Invoke-Script $Detect $null
-Assert-Exit "7e. detect (iru reverted)" $rc 1
+Assert-Exit "7e. detect (iru reverted -> flagged; exit 1 is correct)" $rc 1
 
 # ------------------------------------------------------------------
 # Step summary table

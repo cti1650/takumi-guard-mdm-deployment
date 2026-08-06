@@ -95,7 +95,7 @@ Write-Host "Windows npm registry (before): $winNpmBefore"
 #   /mnt interop is excluded by design), so everything skips = compliant.
 # ------------------------------------------------------------------
 $rc = Invoke-Script $Detect
-Assert-Exit "1. detect (bare distro)" $rc 0
+Assert-Exit "1. detect (bare distro = out of scope, compliant)" $rc 0
 
 # ------------------------------------------------------------------
 # Scenario 2: install npm + pip inside the distro, still unconfigured
@@ -106,7 +106,7 @@ Invoke-InDistro $distro "apt-get update -qq && apt-get install -y -qq npm python
 Write-Host "npm: $(Invoke-InDistro $distro 'npm --version'), pip: $(Invoke-InDistro $distro 'pip3 --version')"
 
 $rc = Invoke-Script $Detect
-Assert-Exit "2. detect (unconfigured)" $rc 1
+Assert-Exit "2. detect (unconfigured -> flagged; exit 1 is correct)" $rc 1
 
 # ------------------------------------------------------------------
 # Scenario 3: remediation -> exit 0, then assert real values inside WSL
@@ -135,7 +135,7 @@ Assert-Exit "5. uninstall" $rc 0
 # Scenario 6: detect after uninstall -> exit 1 (npm back to default)
 # ------------------------------------------------------------------
 $rc = Invoke-Script $Detect
-Assert-Exit "6. detect (reverted)" $rc 1
+Assert-Exit "6. detect (reverted -> flagged; exit 1 is correct)" $rc 1
 
 # ------------------------------------------------------------------
 # Scenario 7: Windows-side npm config untouched throughout
