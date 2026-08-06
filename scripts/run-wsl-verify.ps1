@@ -9,8 +9,9 @@
     Windows-side npm config is never touched (interop safety).
 
     Expects one usable WSL distribution (e.g. registered by Vampire/setup-wsl
-    on a CI runner, or any local distro). WSL 1 is sufficient: the scripts
-    only use the wsl.exe CLI surface (--list/-d/--exec) which is identical.
+    on a CI runner, or any local distro). The scripts only use the wsl.exe CLI
+    surface (--list/-d/--exec), which is identical on WSL 1 and 2; CI uses
+    WSL 2 because WSL 1 cannot execute modern Node.js binaries.
 
     Each expected exit code is asserted here; a mismatch fails the run. Note
     the inverted case: detection returning exit 1 is the *expected* result

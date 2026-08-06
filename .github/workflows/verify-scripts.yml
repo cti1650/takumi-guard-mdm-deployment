@@ -79,9 +79,8 @@ jobs:
 
   # ============================================================
   # WSL: Intune の WSL 用スクリプトを実 WSL ディストリビューションで検証
-  #   GitHub ホステッドランナーは WSL2 (仮想化必須) が不安定なため WSL1 を
-  #   使用する。製品スクリプトは wsl.exe の CLI 面 (--list/-d/--exec) しか
-  #   使わず WSL1/2 で同一のため検証として有効。CI の inbox wsl.exe は
+  #   本番同等の WSL2 を使用する (WSL1 は新しい Node.js バイナリを実行
+  #   できない既知の制約があり npm の検証ができない)。CI の wsl.exe は
   #   UTF-16LE 出力のため NUL 除去フォールバックも実地で通る。
   # ============================================================
   verify-wsl:
@@ -96,11 +95,11 @@ jobs:
       # 検出 = 対象外スキップも検証シナリオに含めるため)。
       # Debian は取得元 (salsa.debian.org の CI アーティファクト) が GitHub
       # ランナーから接続拒否されるため、公式 CDN 配布の Ubuntu を使う。
-      - name: Set up WSL (WSL1)
+      - name: Set up WSL (WSL2)
         uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
         with:
           distribution: Ubuntu-24.04
-          wsl-version: 1
+          wsl-version: 2
 
       - name: Show WSL status
         shell: powershell
