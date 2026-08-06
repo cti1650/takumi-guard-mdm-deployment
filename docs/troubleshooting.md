@@ -32,7 +32,7 @@ pip install <known-malicious-package>
 
 デバイスで `npm config get registry` を実行し、実際の値を確認してください。ユーザーが手動で戻した場合、次回の評価サイクル（Intune Remediation / Jamf Recurring Check-in / Iru 監査）で自動的に再設定されます。
 
-### npm / pip が入っているのに SKIP される
+### npm / pip が入っているのに「対象外」(Not Applicable / not usable) 扱いになる
 
 asdf / pyenv / nvm などのバージョンマネージャーで**グローバルバージョンが未設定**だと、コマンドは存在しても実行に失敗するため「対象外」としてスキップされます（例: `No version is set for python; please run 'asdf set ...'`）。保護対象にするには、デバイス側でグローバルバージョンを設定してください:
 
@@ -40,7 +40,7 @@ asdf / pyenv / nvm などのバージョンマネージャーで**グローバ�
 asdf set -u python <version>   # asdf の例
 ```
 
-スキップの発生は、Jamf なら拡張属性の `Configured (npm only)` / `Configured (pip only)` / `Not Applicable` で、Intune / Iru ならコンソール出力の `SKIP:` 行で確認できます。
+スキップの発生は全 MDM で同じ語彙で確認できます: Jamf なら拡張属性の値、Intune / Iru ならコンソール出力の判定行（`COMPLIANT: Configured (npm only; pip not usable)` / `COMPLIANT: Not Applicable (no usable package manager)` 等）で表示されます。
 
 ### uv / poetry / yarn / pnpm / bun は保護される？
 

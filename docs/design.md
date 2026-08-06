@@ -47,18 +47,19 @@ WSL 内の npm / pip は Linux 側のユーザー設定（`~/.npmrc` / `~/.confi
 | 列挙と除外 | `wsl --list --quiet` で列挙し、コンテナツール内部用の `docker-desktop` / `rancher-desktop` / `podman-*` は除外 |
 | WSL 内の実行 | `wsl -d <distro> --exec sh -lc '<POSIXスクリプト>'`。ログインシェルで PATH を解決（macOS 版の `bash -l` と同じ理屈）。埋め込みスクリプトはダブルクォート不使用の1行 POSIX sh で、PowerShell 5.1 の引数エスケープ問題を回避 |
 | interop 除外 | WSL は既定で Windows の PATH を取り込むため、`/mnt/` 配下に解決される npm / pip（Windows 側の実体）は誤検出・二重設定防止のため対象外として除外 |
-| スキップ規則 | 既存と同じ「未導入・実行不能 = 対象外(適合)」。`sh` を起動できないディストリビューションも SKIP（コンソール出力で確認可能）。nvm 等を `.bashrc`（対話シェルでのみ読込）だけで初期化している構成では npm が見えず SKIP になり得ます |
+| スキップ規則 | 既存と同じ「未導入・実行不能 = 対象外(適合)」。スキップはディストリビューションごとのステータス行（`Not Applicable` / `Configured (npm only; pip not usable)` / `Not Probeable` 等）で可視化。nvm 等を `.bashrc`（対話シェルでのみ読込）だけで初期化している構成では npm が見えずスキップになり得ます |
 | CI | verify-scripts の `verify-wsl` ジョブが、windows ランナー上に登録した実 WSL2 ディストリビューション（Ubuntu）で「PM不在 → 導入 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証。Windows 側の設定が終始不変であること（interop 安全性）も確認 |
 
 ## 検出仕様
 
 | スクリプト | 結果の返し方 |
 |------|------|
-| Intune 検出 / Iru 監査 | `Exit 0` = 設定済み（適合） / `Exit 1` = 未設定（要修復） |
+| Intune 検出 / Iru 監査 | `Exit 0` = 適合 / `Exit 1` = 要修復。判定行に Jamf と同じ語彙のステータスを含める（例: `COMPLIANT: Configured (pip only; npm not usable)` / `NON-COMPLIANT: Not Configured (npm)`） |
+| Intune 検出 (WSL) | 同上をディストリビューションごとに1行ずつ表示し、最終行は `COMPLIANT (1 configured, 1 not applicable)` のような件数サマリー付き判定 |
 | Jamf 拡張属性 | `Configured` / `Configured (npm only)` / `Configured (pip only)` / `Not Applicable`（使用可能なPMなし） / `Not Configured` / `Error`（コンソールユーザー不在時）を `<result>` タグで返却 |
 
 - **未導入・実行不能なパッケージマネージャーは「対象外」= 適合扱い**です。存在確認は `command -v` / `Get-Command` に加えて `--version` の実行成功まで確認するため、asdf / pyenv / nvm などの「バージョン未設定の shim」（存在するが実行時に失敗する）も安全にスキップされます
-- スキップは「保護されていないのに緑に見える」状態になり得るため、Jamf 拡張属性は `Configured (npm only)` 等の**部分適合値でスキップを可視化**します（Intune / Iru はコンソール出力の `SKIP:` 行で確認可能）。Smart Group の判定条件（`is Not Configured`）には影響しません
+- スキップは「保護されていないのに緑に見える」状態になり得るため、**全 MDM で同じ語彙のステータスとして可視化**します: Jamf は拡張属性の値（インベントリに格納）、Intune / Iru はコンソール出力の判定行で `Configured (npm only; pip not usable)` / `Not Applicable` 等を表示します。Smart Group の判定条件（`is Not Configured`）には影響しません
 - 設定値の比較は末尾スラッシュを除去して行います
 
 ## ドリフト修正（設定が戻された場合）
