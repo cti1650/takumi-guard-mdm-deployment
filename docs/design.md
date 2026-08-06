@@ -48,7 +48,7 @@ WSL 内の npm / pip は Linux 側のユーザー設定（`~/.npmrc` / `~/.confi
 | WSL 内の実行 | `wsl -d <distro> --exec sh -lc '<POSIXスクリプト>'`。ログインシェルで PATH を解決（macOS 版の `bash -l` と同じ理屈）。埋め込みスクリプトはダブルクォート不使用の1行 POSIX sh で、PowerShell 5.1 の引数エスケープ問題を回避 |
 | interop 除外 | WSL は既定で Windows の PATH を取り込むため、`/mnt/` 配下に解決される npm / pip（Windows 側の実体）は誤検出・二重設定防止のため対象外として除外 |
 | スキップ規則 | 既存と同じ「未導入・実行不能 = 対象外(適合)」。`sh` を起動できないディストリビューションも SKIP（コンソール出力で確認可能）。nvm 等を `.bashrc`（対話シェルでのみ読込）だけで初期化している構成では npm が見えず SKIP になり得ます |
-| CI | GitHub ホステッドの Windows ランナーは WSL2 を実行できないため verify-scripts の対象外。検証は WSL 導入済みの実機で実施 |
+| CI | verify-scripts の `verify-wsl` ジョブが、windows ランナー上に登録した実 WSL2 ディストリビューション（Ubuntu）で「PM不在 → 導入 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証。Windows 側の設定が終始不変であること（interop 安全性）も確認 |
 
 ## 検出仕様
 
@@ -85,7 +85,7 @@ Intune の実行エンジンは **Windows PowerShell 5.1** です。BOM なし U
 
 ## 品質保証（CI）
 
-GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフローが、windows-latest（PowerShell 5.1）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。関連スクリプト（`intune/` `jamf-pro/` `iru/` と検証ヘルパー）に変更があった push (main) / pull_request で自動実行され、Actions からの手動実行（対象 OS 選択可）にも対応します。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
+GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフローが、windows-latest（PowerShell 5.1）/ WSL（windows-latest 上に WSL2 の Ubuntu を登録）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。関連スクリプト（`intune/` `jamf-pro/` `iru/` と検証ヘルパー）に変更があった push (main) / pull_request で自動実行され、Actions からの手動実行（対象 OS 選択可）にも対応します。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
 
 ---
 

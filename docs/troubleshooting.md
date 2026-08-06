@@ -81,7 +81,7 @@ Custom Script の **Execution Frequency** が `Install once per device` にな�
 
 ## CI での再現確認
 
-リポジトリの **Actions > verify-scripts > Run workflow** を手動実行すると、GitHub ホステッドランナー（Windows = PowerShell 5.1 / macOS）上で検出→投入→解除の全状態遷移を再検証できます。手元で疑わしい挙動が出た場合の切り分けに使えます。
+リポジトリの **Actions > verify-scripts > Run workflow** を手動実行すると、GitHub ホステッドランナー（Windows = PowerShell 5.1 / WSL = 実ディストリビューション / macOS）上で検出→投入→解除の全状態遷移を再検証できます（target で対象を選択可能）。手元で疑わしい挙動が出た場合の切り分けに使えます。
 
 ---
 

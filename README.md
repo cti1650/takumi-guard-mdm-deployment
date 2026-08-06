@@ -45,7 +45,7 @@
 
 ## CI
 
-- **verify-scripts** — Windows (PowerShell 5.1) / macOS の実機ランナー上で、検出→投入→解除の全状態遷移を E2E 検証（関連スクリプト変更時の push / PR で自動実行。Actions から手動実行も可能）
+- **verify-scripts** — Windows (PowerShell 5.1) / WSL (実ディストリビューション) / macOS の実機ランナー上で、検出→投入→解除の全状態遷移を E2E 検証（関連スクリプト変更時の push / PR で自動実行。Actions から手動実行も可能）
 - **build-intunewin** — Intune Win32 配布用の `.intunewin` パッケージをビルド（Actions から手動実行）
 
 ## License
