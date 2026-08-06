@@ -7,7 +7,8 @@ name: verify-scripts
 #
 # トリガー:
 #   - 手動実行 (target で対象 OS を選択)
-#   - 関連スクリプト変更時の push (main) / pull_request では両 OS を自動実行
+#   - 関連スクリプト変更時の push (main) / pull_request では全対象 (windows /
+#     wsl / macos) を自動実行
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +20,7 @@ on:
         options:
           - all
           - windows
+          - wsl
           - macos
   push:
     branches: [main]
@@ -27,6 +29,7 @@ on:
       - "jamf-pro/**"
       - "iru/**"
       - "scripts/run-windows-verify.ps1"
+      - "scripts/run-wsl-verify.ps1"
       - "scripts/run-macos-verify.sh"
       - ".github/workflows/verify-scripts.yml"
   pull_request:
@@ -35,6 +38,7 @@ on:
       - "jamf-pro/**"
       - "iru/**"
       - "scripts/run-windows-verify.ps1"
+      - "scripts/run-wsl-verify.ps1"
       - "scripts/run-macos-verify.sh"
       - ".github/workflows/verify-scripts.yml"
 
@@ -72,6 +76,45 @@ jobs:
         shell: powershell
         run: .\scripts\run-windows-verify.ps1
         timeout-minutes: 15
+
+  # ============================================================
+  # WSL: Intune の WSL 用スクリプトを実 WSL ディストリビューションで検証
+  #   本番同等の WSL2 を使用する (WSL1 は新しい Node.js バイナリを実行
+  #   できない既知の制約があり npm の検証ができない)。CI の wsl.exe は
+  #   UTF-16LE 出力のため NUL 除去フォールバックも実地で通る。
+  # ============================================================
+  verify-wsl:
+    # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'wsl' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # 素の Ubuntu を登録する (additional-packages は使わない: PM 未導入状態の
+      # 検出 = 対象外スキップも検証シナリオに含めるため)。
+      # Debian は取得元 (salsa.debian.org の CI アーティファクト) が GitHub
+      # ランナーから接続拒否されるため、公式 CDN 配布の Ubuntu を使う。
+      - name: Set up WSL (WSL2)
+        uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+
+      - name: Show WSL status
+        shell: powershell
+        run: |
+          $env:WSL_UTF8 = "1"
+          (wsl.exe --list --verbose 2>&1 | Out-String) -replace "`0", ""
+          wsl.exe --exec sh -lc 'head -2 /etc/os-release; id -un'
+
+      # 製品スクリプトは Intune と同じ Windows PowerShell 5.1 (pwsh ではない)
+      # で実行する。scripts/run-wsl-verify.ps1 が状態遷移シナリオ全体を回し、
+      # 期待/実績を GITHUB_STEP_SUMMARY に表出力する。
+      - name: Run WSL verify scenario
+        shell: powershell
+        run: .\scripts\run-wsl-verify.ps1
+        timeout-minutes: 25
 
   # ============================================================
   # macOS: Jamf Pro / Iru スクリプトを検証
