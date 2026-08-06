@@ -43,13 +43,14 @@ function Get-WslDistro {
 }
 
 # Runs the commands in one distribution and returns the text after "RESULT:",
-# or $null when they could not run there. Diagnostics use Write-Host
-# because Write-Output would be captured into the return value.
+# or $null when they could not run there. The RESULT protocol line is not
+# displayed. Diagnostics use Write-Host because Write-Output would be
+# captured into the return value.
 function Invoke-WslProbe {
     param([string]$Distro, [string]$ShellScript)
     $lines = @(& wsl.exe -d $Distro --exec sh -lc $ShellScript 2>$null |
         ForEach-Object { ("$_" -replace "`0", "").Trim() } | Where-Object { $_ })
-    foreach ($line in $lines) { Write-Host "${Distro}: $line" }
+    foreach ($line in $lines) { if ($line -notmatch '^RESULT:') { Write-Host "${Distro}: $line" } }
     foreach ($line in $lines) { if ($line -match '^RESULT:(.+)$') { return $Matches[1] } }
 }
 

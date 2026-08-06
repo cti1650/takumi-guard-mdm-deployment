@@ -15,28 +15,57 @@ case "$CONSOLE_USER" in
 esac
 
 # Single sudo: all checks run in one login shell as the console user.
-sudo -u "$CONSOLE_USER" -H bash -l >/dev/null 2>&1 <<'CHILD'
+# The child reports a per-package-manager state (ok / needs / skip) on a
+# marker line; login-shell noise on stdout is ignored by the marker grep.
+CHILD_OUT=$(sudo -u "$CONSOLE_USER" -H bash -l 2>/dev/null <<'CHILD'
 export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 usable() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
 val() { "$@" 2>/dev/null | tr -d '[:space:]'; }
 
+n=skip
 if usable npm; then
     v=$(val npm config get registry)
-    [ "${v%/}" = "https://npm.flatt.tech" ] || exit 1
+    if [ "${v%/}" = "https://npm.flatt.tech" ]; then n=ok; else n=needs; fi
 fi
 
 pip=""
 for c in pip3 pip; do usable "$c" && { pip="$c"; break; }; done
+p=skip
 if [ -n "$pip" ]; then
     v=$(val "$pip" config get global.index-url)
-    [ "${v%/}" = "https://pypi.flatt.tech/simple" ] || exit 1
+    if [ "${v%/}" = "https://pypi.flatt.tech/simple" ]; then p=ok; else p=needs; fi
 fi
+echo "TG_STATE npm=$n pip=$p"
+# Exit code keeps the original audit semantics (0 = compliant) so the CHILD
+# body remains usable standalone (CI fallback mode extracts and runs it).
+# Balanced-paren case pattern: macOS bash 3.2 cannot parse an unbalanced
+# ")" inside $(...) command substitution.
+case "$n$p" in (*needs*) exit 1 ;; esac
 exit 0
 CHILD
+)
 
-if [ $? -eq 0 ]; then
-    echo "COMPLIANT: Takumi Guard configured (npm/PyPI)"
-    exit 0
+STATE=$(printf '%s\n' "$CHILD_OUT" | grep '^TG_STATE ' | tail -n 1)
+if [ -z "$STATE" ]; then
+    echo "NON-COMPLIANT: audit could not run as console user"
+    exit 1
 fi
-echo "NON-COMPLIANT: Takumi Guard not configured"
-exit 1
+NPM=${STATE#*npm=}; NPM=${NPM%% *}
+PIP=${STATE#*pip=}
+
+# Same status vocabulary as the Jamf extension attribute, so skips
+# ("out of scope = compliant") are visible in the verdict line.
+NEEDS=""
+[ "$NPM" = "needs" ] && NEEDS="npm"
+[ "$PIP" = "needs" ] && NEEDS="${NEEDS:+$NEEDS, }pip"
+if [ -n "$NEEDS" ]; then
+    echo "NON-COMPLIANT: Not Configured ($NEEDS)"
+    exit 1
+fi
+if [ "$NPM" = "ok" ] && [ "$PIP" = "ok" ]; then STATUS="Configured"
+elif [ "$NPM" = "ok" ]; then STATUS="Configured (npm only; pip not usable)"
+elif [ "$PIP" = "ok" ]; then STATUS="Configured (pip only; npm not usable)"
+else STATUS="Not Applicable (no usable package manager)"
+fi
+echo "COMPLIANT: $STATUS"
+exit 0

@@ -160,7 +160,7 @@ done
 BODY="$(child_body "$DETECT_SH")"
 # Prepend shim dir so it wins over the homebrew paths the body appends.
 PATH="$SHIMDIR:/usr/bin:/bin" bash -c "$BODY" >/dev/null 2>&1
-assert_exit "1. detect (broken shim, skipped)" $? 0
+assert_exit "1. detect (broken shim = out of scope, compliant)" $? 0
 rm -rf "$SHIMDIR"
 
 # ============================================================
@@ -168,7 +168,7 @@ rm -rf "$SHIMDIR"
 #   Ensure a clean starting state first.
 # ============================================================
 revert_config
-run_detect "$DETECT_SH"; assert_exit "2. iru audit (unconfigured)" $? 1
+run_detect "$DETECT_SH"; assert_exit "2. iru audit (unconfigured -> flagged; exit 1 is correct)" $? 1
 ea="$(run_ea "$JAMF_EA_SH")"; assert_eq "2. jamf EA (unconfigured)" "<result>Not Configured</result>" "$ea"
 
 # ============================================================
@@ -198,7 +198,7 @@ run_uninstall "$JAMF_UNINSTALL_SH"; assert_exit "5. jamf uninstall" $? 0
 # ============================================================
 # Scenario 6: reverted -> iru audit exit 1 / jamf EA Not Configured
 # ============================================================
-run_detect "$DETECT_SH"; assert_exit "6. iru audit (reverted)" $? 1
+run_detect "$DETECT_SH"; assert_exit "6. iru audit (reverted -> flagged; exit 1 is correct)" $? 1
 ea="$(run_ea "$JAMF_EA_SH")"; assert_eq "6. jamf EA (reverted)" "<result>Not Configured</result>" "$ea"
 
 # ============================================================
@@ -209,7 +209,7 @@ assert_eq "7a. iru npm registry value" "$NPM_EXPECTED" "$(npm_registry | sed 's:
 run_detect "$DETECT_SH"; assert_exit "7b. iru audit (configured)" $? 0
 ea="$(run_ea "$JAMF_EA_SH")"; assert_ea_configured "7c. jamf EA (iru configured)" "$ea"
 run_uninstall "$IRU_UNINSTALL_SH"; assert_exit "7d. iru uninstall" $? 0
-run_detect "$DETECT_SH"; assert_exit "7e. iru audit (reverted)" $? 1
+run_detect "$DETECT_SH"; assert_exit "7e. iru audit (reverted -> flagged; exit 1 is correct)" $? 1
 
 # ============================================================
 # Summary

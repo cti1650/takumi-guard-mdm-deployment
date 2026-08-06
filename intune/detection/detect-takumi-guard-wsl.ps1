@@ -24,14 +24,15 @@ $env:WSL_UTF8 = "1"
 # through PowerShell 5.1 native argument passing and wsl.exe --exec).
 # usable() rejects Windows-interop binaries under /mnt/ so the Windows host
 # config is never mistaken for the distribution's own.
+# Reports a per-package-manager state (ok / needs / skip) on the RESULT line;
+# the human-readable status is composed on the PowerShell side.
 $Probe = @(
     'set -f'
-    'usable(){ p=$(command -v $1 2>/dev/null) || return 1; case $p in /mnt/*) return 1;; esac; $1 --version >/dev/null 2>&1; }'
-    'ng=0'
-    'if usable npm; then cur=$(npm config get registry 2>/dev/null); cur=${cur%/}; echo npm: $cur; [ ${cur:-none} = https://npm.flatt.tech ] || ng=1; else echo SKIP: npm not usable; fi'
+    'usable(){ u=$(command -v $1 2>/dev/null) || return 1; case $u in /mnt/*) return 1;; esac; $1 --version >/dev/null 2>&1; }'
+    'n=skip; if usable npm; then cur=$(npm config get registry 2>/dev/null); cur=${cur%/}; echo npm: ${cur:-unset}; if [ ${cur:-none} = https://npm.flatt.tech ]; then n=ok; else n=needs; fi; fi'
     'pm=; if usable pip; then pm=pip; elif usable pip3; then pm=pip3; fi'
-    'if [ ${pm:-none} = none ]; then echo SKIP: pip not usable; else cur=$($pm config get global.index-url 2>/dev/null); cur=${cur%/}; echo pip: $cur; [ ${cur:-none} = https://pypi.flatt.tech/simple ] || ng=1; fi'
-    'if [ $ng -eq 0 ]; then echo RESULT:OK; else echo RESULT:NEEDS; fi'
+    'p=skip; if [ ${pm:-none} != none ]; then cur=$($pm config get global.index-url 2>/dev/null); cur=${cur%/}; echo pip: ${cur:-unset}; if [ ${cur:-none} = https://pypi.flatt.tech/simple ]; then p=ok; else p=needs; fi; fi'
+    'echo RESULT:npm=$n pip=$p'
 ) -join '; '
 
 # Registered distributions of the current user; utility distributions that
@@ -45,14 +46,31 @@ function Get-WslDistro {
 }
 
 # Runs the probe in one distribution and returns the text after "RESULT:",
-# or $null when the probe could not run there. Diagnostics use Write-Host
-# because Write-Output would be captured into the return value.
+# or $null when the probe could not run there. The RESULT protocol line is
+# not displayed. Diagnostics use Write-Host because Write-Output would be
+# captured into the return value.
 function Invoke-WslProbe {
     param([string]$Distro, [string]$ShellScript)
     $lines = @(& wsl.exe -d $Distro --exec sh -lc $ShellScript 2>$null |
         ForEach-Object { ("$_" -replace "`0", "").Trim() } | Where-Object { $_ })
-    foreach ($line in $lines) { Write-Host "${Distro}: $line" }
+    foreach ($line in $lines) { if ($line -notmatch '^RESULT:') { Write-Host "${Distro}: $line" } }
     foreach ($line in $lines) { if ($line -match '^RESULT:(.+)$') { return $Matches[1] } }
+}
+
+# Compose the same status vocabulary as the Jamf extension attribute from a
+# "npm=<state> pip=<state>" marker (state: ok / needs / skip).
+function Format-Status {
+    param([string]$Marker)
+    $npm = if ($Marker -match 'npm=(\w+)') { $Matches[1] } else { "skip" }
+    $pip = if ($Marker -match 'pip=(\w+)') { $Matches[1] } else { "skip" }
+    $needs = @()
+    if ($npm -eq "needs") { $needs += "npm" }
+    if ($pip -eq "needs") { $needs += "pip" }
+    if ($needs.Count) { return "Not Configured ($($needs -join ', '))" }
+    if ($npm -eq "ok" -and $pip -eq "ok") { return "Configured" }
+    if ($npm -eq "ok") { return "Configured (npm only; pip not usable)" }
+    if ($pip -eq "ok") { return "Configured (pip only; npm not usable)" }
+    return "Not Applicable (no usable package manager)"
 }
 
 try {
@@ -60,15 +78,27 @@ try {
     if ($distros.Count -eq 0) { Write-Output "COMPLIANT (no WSL distribution)"; exit 0 }
 
     $needs = @()
+    $tally = @{}
     foreach ($d in $distros) {
-        $result = Invoke-WslProbe $d $Probe
-        if (-not $result) { Write-Host "SKIP: $d not probeable"; continue }
-        if ($result -ne "OK") { $needs += $d }
+        $marker = Invoke-WslProbe $d $Probe
+        $status = if ($marker) { Format-Status $marker } else { "Not Probeable (sh failed)" }
+        Write-Host "${d}: $status"
+        if ($status -like "Not Configured*") { $needs += $d }
+        $key = switch -Wildcard ($status) {
+            "Not Configured*"  { "not configured" }
+            "Configured"       { "configured" }
+            "Configured (*"    { "partially configured" }
+            "Not Applicable*"  { "not applicable" }
+            "Not Probeable*"   { "not probeable" }
+        }
+        $tally[$key] = 1 + $(if ($tally.ContainsKey($key)) { $tally[$key] } else { 0 })
     }
 
-    if ($needs.Count -eq 0) { Write-Output "COMPLIANT"; exit 0 }
-    Write-Output "NON-COMPLIANT: $($needs -join ', ')"
-    exit 1
+    if ($needs.Count) { Write-Output "NON-COMPLIANT: $($needs -join ', ')"; exit 1 }
+    $summary = @("configured", "partially configured", "not applicable", "not probeable") |
+        Where-Object { $tally.ContainsKey($_) } | ForEach-Object { "$($tally[$_]) $_" }
+    Write-Output "COMPLIANT ($($summary -join ', '))"
+    exit 0
 }
 catch {
     Write-Error "DETECTION ERROR: $_"
