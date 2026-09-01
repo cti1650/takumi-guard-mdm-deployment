@@ -36,6 +36,8 @@ fi
 exit 0
 CHILD
 
+# shellcheck disable=SC2181  # the command above is a heredoc-fed sudo, which
+# cannot be placed inside "if" without splitting the CHILD body.
 if [ $? -eq 0 ]; then
     echo "Takumi Guard settings reverted"
     exit 0

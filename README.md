@@ -45,7 +45,9 @@
 
 ## CI
 
-- **verify-scripts** — Windows (PowerShell 5.1) / WSL (実ディストリビューション) / macOS の実機ランナー上で、検出→投入→解除の全状態遷移を E2E 検証（関連スクリプト変更時の push / PR で自動実行。Actions から手動実行も可能）
+- **verify-scripts** — `.sh` / `.ps1` 変更時の push / PR で自動実行される2段構成のワークフロー（Actions から手動実行も可能）
+  - **lint** — ShellCheck と `.ps1` の BOM なし ASCII 検査に加え、**配布先と同じシェル**で構文確認（macOS 同梱の bash 3.2 / CHILD 本体は zsh / `.ps1` は Windows PowerShell 5.1 のパーサ）
+  - **verify** — Windows (PowerShell 5.1) / WSL (実ディストリビューション) / macOS の実機ランナー上で、検出→投入→解除の全状態遷移を E2E 検証。**lint が通らない限り実行されません**
 - **build-intunewin** — Intune Win32 配布用の `.intunewin` パッケージをビルド（Actions から手動実行）
 
 ## License

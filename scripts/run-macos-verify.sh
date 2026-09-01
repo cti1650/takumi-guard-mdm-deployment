@@ -80,6 +80,8 @@ run_as_user() { # command...
 }
 
 npm_registry() { run_as_user 'npm config get registry 2>/dev/null' | tr -d '[:space:]'; }
+# shellcheck disable=SC2016  # single quotes are deliberate: run_as_user passes
+# the string to another shell, so $c must expand there and not here.
 pip_index()    { run_as_user 'for c in pip3 pip; do command -v "$c" >/dev/null 2>&1 && { "$c" config get global.index-url 2>/dev/null; break; }; done' | tr -d '[:space:]'; }
 
 # Run a detect-style script (iru audit). Returns its exit code.
@@ -140,6 +142,8 @@ run_uninstall() { run_install "$1"; }
 # Inline revert for the INITIAL state cleanup only (scenario reverts use the
 # product uninstall scripts), in the same user context the install scripts use.
 revert_config() {
+  # shellcheck disable=SC2016  # see pip_index: expansion must happen in the
+  # shell run_as_user starts, not in this one.
   run_as_user 'command -v npm >/dev/null 2>&1 && npm config delete registry >/dev/null 2>&1; for c in pip3 pip; do command -v "$c" >/dev/null 2>&1 && { "$c" config unset global.index-url >/dev/null 2>&1; break; }; done; true'
 }
 

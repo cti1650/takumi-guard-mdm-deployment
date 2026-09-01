@@ -98,7 +98,11 @@ Intune の実行エンジンは **Windows PowerShell 5.1** です。BOM なし U
 
 ## 品質保証（CI）
 
-GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフローが、windows-latest（PowerShell 5.1）/ WSL（windows-latest 上に WSL2 の Ubuntu を登録）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。関連スクリプト（`intune/` `jamf-pro/` `iru/` と検証ヘルパー）に変更があった push (main) / pull_request で自動実行され、Actions からの手動実行（対象 OS 選択可）にも対応します。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
+GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワークフローが lint → verify の2段で検証します。`.sh` / `.ps1` に変更があった push (main) / pull_request で自動実行され、Actions からの手動実行（対象 OS 選択可）にも対応します。
+
+**lint**（数十秒）は、ShellCheck（既定 severity。抑制は理由付きのコメントで明記）と、`.ps1` が BOM なし ASCII であること（上記「Windows の文字コード」の不変条件）を検査します。構文確認は**配布先と同じシェル**で行います。Linux の bash 5 が通す記法を macOS 同梱の bash 3.2 が弾くことがあり、CHILD 本体は実際にはユーザーのログインシェル（Catalina 以降の既定は zsh）が実行するため、macos ランナー上で bash 3.2 と zsh の両方で確認し、`.ps1` は windows ランナー上の Windows PowerShell 5.1 のパーサで確認します。
+
+**verify** は windows-latest（PowerShell 5.1）/ WSL（windows-latest 上に WSL2 の Ubuntu を登録）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。`needs` で lint に依存させており、**構文エラーで実機ランナーを 20〜30 分回さないよう lint で堰き止めます**。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
 
 ---
 
