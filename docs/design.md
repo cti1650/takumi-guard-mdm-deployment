@@ -32,8 +32,20 @@ pip と pip3 はユーザー設定ファイルを共有するため、どちら�
 ## 実行コンテキスト
 
 - **Windows (Intune)**: ログオンユーザーのコンテキストで実行が必須。Microsoft は多くの修復で SYSTEM を推奨していますが、本スクリプトはユーザーの npm/pip 設定が対象のため、SYSTEM 実行では意味がありません。Intune では「Run this script using the logged-on credentials = Yes」がこれに当たります
-- **Windows (Iru)**: Iru のカスタムスクリプトには実行ユーザーを指定する設定項目が公式ドキュメントに見当たらず（Windows 固有の設定は `Execute In` = 64/32 bit のみ）、システムコンテキストで実行されるとされています。その場合ログオンユーザーの設定には反映されないため、**Windows は Intune 経由での配布を推奨**します（Iru を使う場合は事前検証が必要）
-- **macOS (Jamf/Iru)**: MDM からは root で実行されますが、スクリプト内で `stat -f "%Su" /dev/console` によりコンソールログイン中のユーザーを特定し、`sudo -u <user> bash -l` の1回の呼び出しで全処理をユーザー権限・ログインシェル環境（PATH 解決込み）で実行します。Homebrew パス（`/opt/homebrew/bin`, `/usr/local/bin`）のフォールバックも追加しています
+- **Windows (Iru)**: Iru のカスタムスクリプトは**システムコンテキストで実行**され、実行ユーザーを指定する設定項目は提供されていません（Windows 固有の設定は `Command Line Parameters` と `Execute In` = 64/32 bit のみ）。ログオンユーザーの設定には反映されないため、**Windows は Intune 経由での配布を推奨**します（Iru を使う場合は事前検証が必要）
+- **macOS (Jamf)**: root で実行されるため、`stat -f "%Su" /dev/console` でコンソールログイン中のユーザーを特定し、`sudo -u <user> -H bash -l` の1回の呼び出しで全処理をユーザー権限・ログインシェル環境（PATH 解決込み）で実行します。Homebrew パス（`/opt/homebrew/bin`, `/usr/local/bin`）のフォールバックも追加しています
+- **macOS (Iru)**: 同じく root 実行ですが、ユーザーセッションへの入り方をより厳密にしています。Iru はコンソール出力がそのまま監査記録になるため、ここでの取りこぼしがそのまま誤判定になります
+
+| 項目 | 実装 | 理由 |
+|------|------|------|
+| ユーザー特定 | `scutil` の `State:/Users/ConsoleUser`（`/dev/console` はフォールバック） | Apple が公開している GUI セッション所有者の取得方法 |
+| セッション切替 | `launchctl asuser <uid> sudo -u <user> -H` | uid を変えるだけの `sudo -u` では root の bootstrap 名前空間に残る。ログインシェル＝ユーザーのプロファイルコードを実行する以上、per-user launchd ドメインや Keychain に触れる記述が失敗しうる |
+| ログインシェル | `dscl` で引いた本人の login shell（POSIX 系以外は `/bin/zsh` にフォールバック） | Catalina 以降の既定は zsh。`bash -l` では `.zprofile` を読まず、PATH 設定を取りこぼす |
+| rc の読み込み | ログインシェルに加えて `.zshrc` / `.bashrc` も読み込む | nvm / fnm / asdf のインストーラは PATH 設定を rc 側に書く。見えない PM は「skip = 適合」と報告されるため、取りこぼしがそのまま無保護の見逃しになる |
+| 子スクリプトの渡し方 | 一時ファイルに書き出して渡し、stdin は `/dev/null` | プロファイル側に stdin を読むコードがあると、heredoc で流し込んだ本体を食われる |
+| 結果の受け渡し | stdout のマーカー行（行頭アンカーなしで照合） | `launchctl asuser` は終了コードの伝達が保証されない。またシェル統合（iTerm2 / Warp / VS Code）が全出力行をエスケープシーケンスで囲むため、`^` 固定の照合は一致しない |
+
+> 子スクリプト側で終了ステータス用の変数に `status` を使っていないのは、zsh では `status` が `$?` の別名の読み取り専用変数で、代入するとスクリプトが中断するためです。
 
 ## WSL の扱い（Windows・任意）
 
