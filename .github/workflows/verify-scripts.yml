@@ -1,13 +1,18 @@
 name: verify-scripts
 
-# MDM 配布スクリプトの E2E 検証を行う。
-# 検証内容: (1) 状態別の検知動作 (2) PM インストール前後の検知 (3) 修復による
-# 設定投入の完了確認 (4) 対象除外 (アンインストール/revert) による設定解除。
-# ビルド成果物は無く、製品スクリプト (intune/ iru/ jamf-pro/) をそのまま実行する。
+# MDM 配布スクリプトの静的チェック (lint) と E2E 検証を行う。
+#
+# 2 段構成で、lint を通らない限り E2E 検証は動かない (needs による堰き止め)。
+# 構文エラーで実機ランナーを 20-30 分回すのを避けるため。
+#   1. lint    : 実行を伴わない静的チェック (数十秒)
+#   2. verify  : 製品スクリプト (intune/ iru/ jamf-pro/) をそのまま実行し、
+#                (1) 状態別の検知動作 (2) PM インストール前後の検知
+#                (3) 修復による設定投入の完了確認
+#                (4) 対象除外 (アンインストール/revert) による設定解除 を検証
 #
 # トリガー:
-#   - 手動実行 (target で対象 OS を選択)
-#   - 関連スクリプト変更時の push (main) / pull_request では全対象 (windows /
+#   - 手動実行 (target で対象 OS を選択。lint は target によらず常に実行)
+#   - スクリプト変更時の push (main) / pull_request では全対象 (windows /
 #     wsl / macos) を自動実行
 on:
   workflow_dispatch:
@@ -25,21 +30,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "intune/**"
-      - "jamf-pro/**"
-      - "iru/**"
-      - "scripts/run-windows-verify.ps1"
-      - "scripts/run-wsl-verify.ps1"
-      - "scripts/run-macos-verify.sh"
+      # lint が全スクリプトを見るため、対象は拡張子で指定する
+      - "**/*.sh"
+      - "**/*.ps1"
       - ".github/workflows/verify-scripts.yml"
   pull_request:
     paths:
-      - "intune/**"
-      - "jamf-pro/**"
-      - "iru/**"
-      - "scripts/run-windows-verify.ps1"
-      - "scripts/run-wsl-verify.ps1"
-      - "scripts/run-macos-verify.sh"
+      # lint が全スクリプトを見るため、対象は拡張子で指定する
+      - "**/*.sh"
+      - "**/*.ps1"
       - ".github/workflows/verify-scripts.yml"
 
 permissions:
@@ -52,9 +51,101 @@ concurrency:
 
 jobs:
   # ============================================================
+  # [lint] ShellCheck と .ps1 のエンコード検査 (どちらも OS 非依存)
+  # ============================================================
+  lint-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show tool versions
+        run: shellcheck --version
+
+      # 既定 severity で通す。抑制は各スクリプト内に理由付きコメントで明記する。
+      - name: ShellCheck
+        run: find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 shellcheck
+
+      # PowerShell 5.1 は BOM なし UTF-8 の非 ASCII をレガシーコードページとして
+      # 解釈して文字化けするため、.ps1 は BOM なし + ASCII のみで統一している。
+      - name: PowerShell files are BOM-less ASCII
+        run: |
+          fail=0
+          # Byte range instead of grep -P: BSD grep has no -P, and this check is
+          # meant to be runnable locally on macOS too.
+          high=$(printf '[\200-\377]')
+          while IFS= read -r -d '' f; do
+            if [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              echo "NG (has BOM): $f"; fail=1
+            fi
+            if LC_ALL=C grep -n "$high" "$f"; then
+              echo "NG (non-ASCII): $f"; fail=1
+            fi
+          done < <(find . -name '*.ps1' -not -path './.git/*' -print0)
+          exit $fail
+
+  # ============================================================
+  # [lint] macOS: 配布先と同じシェルで構文確認
+  #   macOS 同梱の bash は 3.2 で、Linux の bash 5 が通す記法を弾くことがある
+  #   (例: $(...) 内の case で ")" が不均衡なパターン)。
+  #   また Iru / Jamf の CHILD 本体はコンソールユーザーのログインシェル
+  #   (Catalina 以降の既定は zsh) が実行するため、zsh でも構文確認する。
+  # ============================================================
+  lint-shell-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show shell versions
+        run: |
+          /bin/bash --version | head -n1
+          /bin/zsh --version
+
+      - name: Syntax check with macOS bash 3.2
+        run: find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -n1 /bin/bash -n
+
+      - name: Syntax check CHILD bodies with zsh and bash 3.2
+        run: |
+          fail=0
+          for f in $(grep -rl "<<'CHILD'" --include='*.sh' .); do
+            body=$(sed -n "/<<'CHILD'/,/^CHILD\$/p" "$f" | sed '1d;$d')
+            printf '%s\n' "$body" | /bin/zsh  -n || { echo "NG (zsh): $f";      fail=1; }
+            printf '%s\n' "$body" | /bin/bash -n || { echo "NG (bash 3.2): $f"; fail=1; }
+          done
+          exit $fail
+
+  # ============================================================
+  # [lint] Windows: 本番と同じ Windows PowerShell 5.1 のパーサで構文確認
+  # ============================================================
+  lint-powershell:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion
+          $failed = 0
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors) | Out-Null
+              if ($errors) {
+                  Write-Output "NG: $($_.FullName)"
+                  $errors | ForEach-Object { Write-Output "    $($_.Message)" }
+                  $failed = 1
+              }
+          }
+          exit $failed
+
+  # ============================================================
   # Windows: Intune / Iru スクリプトを本番同等の PowerShell 5.1 で検証
   # ============================================================
   verify-windows:
+    # lint を通ってから実機検証に進む
+    needs: [lint-shell, lint-shell-macos, lint-powershell]
     # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
     runs-on: windows-latest
@@ -84,6 +175,8 @@ jobs:
   #   UTF-16LE 出力のため NUL 除去フォールバックも実地で通る。
   # ============================================================
   verify-wsl:
+    # lint を通ってから実機検証に進む
+    needs: [lint-shell, lint-shell-macos, lint-powershell]
     # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'wsl' }}
     runs-on: windows-latest
@@ -122,6 +215,8 @@ jobs:
   #   フォールバックする。どちらで走ったかはサマリーに明記する。
   # ============================================================
   verify-macos:
+    # lint を通ってから実機検証に進む
+    needs: [lint-shell, lint-shell-macos, lint-powershell]
     # 自動トリガー (push/PR) では常に実行、手動実行時は target に従う
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'macos' }}
     runs-on: macos-latest
