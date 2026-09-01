@@ -147,8 +147,12 @@ revert_config() {
 # Scenario 1: broken-shim / no PM -> detect logic exit 0 (all skipped)
 #   Extract the detect CHILD body and run it with a PATH whose npm/pip shims
 #   exist but fail --version, so usable() is false and it exits 0.
+#   HOME is isolated as well: the body deliberately sources the user's rc
+#   (~/.bashrc / ~/.zshrc) to pick up nvm / fnm / asdf, and a real rc would put
+#   the machine's working npm back on PATH ahead of the shims.
 # ============================================================
 SHIMDIR="$(mktemp -d)"
+SHIMHOME="$(mktemp -d)"
 for c in npm pip pip3; do
   cat > "$SHIMDIR/$c" <<'SHIM'
 #!/bin/bash
@@ -159,9 +163,9 @@ SHIM
 done
 BODY="$(child_body "$DETECT_SH")"
 # Prepend shim dir so it wins over the homebrew paths the body appends.
-PATH="$SHIMDIR:/usr/bin:/bin" bash -c "$BODY" >/dev/null 2>&1
+HOME="$SHIMHOME" PATH="$SHIMDIR:/usr/bin:/bin" bash -c "$BODY" >/dev/null 2>&1
 assert_exit "1. detect (broken shim = out of scope, compliant)" $? 0
-rm -rf "$SHIMDIR"
+rm -rf "$SHIMDIR" "$SHIMHOME"
 
 # ============================================================
 # Scenario 2: unconfigured -> iru audit exit 1 / jamf EA Not Configured
