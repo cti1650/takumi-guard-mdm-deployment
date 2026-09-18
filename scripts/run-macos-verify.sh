@@ -2,10 +2,11 @@
 # ============================================================
 # macOS E2E verify for Takumi Guard MDM scripts (Jamf Pro / Iru).
 # ============================================================
-# Verifies the full state transition: broken-shim detect (all skipped) ->
-# unconfigured audit/EA -> jamf policy install -> configured audit/EA ->
-# jamf uninstall -> reverted audit/EA, then repeats configure/detect/uninstall
-# with the Iru macOS install/uninstall scripts.
+# Verifies the Command Line Tools stub guard, then the full state transition:
+# broken-shim detect (all skipped) -> unconfigured audit/EA -> jamf policy
+# install -> configured audit/EA -> jamf uninstall -> reverted audit/EA, then
+# repeats configure/detect/uninstall with the Iru macOS install/uninstall
+# scripts.
 #
 # Two modes, chosen from the console user probe:
 #   e2e      : console user is a real login (e.g. runner) -> run full product
@@ -146,6 +147,57 @@ revert_config() {
   # shell run_as_user starts, not in this one.
   run_as_user 'command -v npm >/dev/null 2>&1 && npm config delete registry >/dev/null 2>&1; for c in pip3 pip; do command -v "$c" >/dev/null 2>&1 && { "$c" config unset global.index-url >/dev/null 2>&1; break; }; done; true'
 }
+
+# ---------- Command Line Tools stub guard ----------
+# Only the ORDER inside usable() keeps the xcode-select stub from being run, and
+# no behavioural test can see an order, so assert it directly.
+clt_guard_check() { # script_path; echoes "ok" or why it failed
+  local block guard_line version_line
+  block=$(awk '/^usable\(\) \{/,/^\}/' "$1")
+  [ -n "$block" ]                                              || { echo "usable() not found";        return; }
+  printf '%s\n' "$block" | grep -qF '/usr/bin/pip3|/usr/bin/pip' || { echo "stub paths not matched";   return; }
+  printf '%s\n' "$block" | grep -qF 'xcode-select -p'          || { echo "no xcode-select check";     return; }
+  # shellcheck disable=SC2016  # single quotes are deliberate: grep -F matches
+  # the literal "$tg_dev_dir" as it appears in the script under test.
+  printf '%s\n' "$block" | grep -qF '[ -d "$tg_dev_dir" ]'     || { echo "no -d existence check";     return; }
+  printf '%s\n' "$block" | grep -qF 'return 1'                 || { echo "guard never returns 1";     return; }
+  guard_line=$(printf   '%s\n' "$block" | grep -nF 'xcode-select -p' | head -n1 | cut -d: -f1)
+  version_line=$(printf '%s\n' "$block" | grep -nF -- '--version'    | head -n1 | cut -d: -f1)
+  [ "$guard_line" -lt "$version_line" ]                        || { echo "guard runs after --version"; return; }
+  echo "ok"
+}
+
+# ============================================================
+# Scenario 0: Command Line Tools stub guard (docs/design.md)
+#   0a: guard present and correctly ordered in all six scripts (a partial
+#       rollout, five of six, is the realistic regression -> one row per file).
+#   0b/0c: usable() itself is extracted and exercised, rather than the whole
+#       detect body, whose result would depend on whatever pip the host happens
+#       to have in /opt/homebrew/bin.
+#   Proving the stub went unexecuted needs a machine without the Command Line
+#   Tools: a runner always has them and /usr/bin is read-only, so an unguarded
+#   pip3 would be refused here too. That check stays manual.
+# ============================================================
+for f in "$DETECT_SH" "$IRU_INSTALL_SH" "$IRU_UNINSTALL_SH" \
+         "$JAMF_EA_SH" "$JAMF_INSTALL_SH" "$JAMF_UNINSTALL_SH"; do
+  r="$(clt_guard_check "$f")"
+  [ "$r" = "ok" ] && rc=0 || rc=1
+  record "0a. CLT stub guard ($(basename "$f"))" "guard before --version" "$r" "$rc"
+done
+
+GUARDDIR="$(mktemp -d)"
+awk '/^usable\(\) \{/,/^\}/' "$DETECT_SH" > "$GUARDDIR/usable.sh"
+printf '#!/bin/sh\necho "pip 99.0"\n' > "$GUARDDIR/pip3"
+chmod +x "$GUARDDIR/pip3"
+# DEVELOPER_DIR points nowhere in both runs; only the path pip3 resolves to
+# differs, so the guard is the single variable under test.
+PATH="/usr/bin:/bin" DEVELOPER_DIR="$GUARDDIR/no-such-developer-dir" \
+  bash -c '. "$1/usable.sh"; usable pip3' _ "$GUARDDIR" >/dev/null 2>&1
+assert_exit "0b. /usr/bin/pip3 refused when no developer directory" $? 1
+PATH="$GUARDDIR:/usr/bin:/bin" DEVELOPER_DIR="$GUARDDIR/no-such-developer-dir" \
+  bash -c '. "$1/usable.sh"; usable pip3' _ "$GUARDDIR" >/dev/null 2>&1
+assert_exit "0c. pip3 outside /usr/bin unaffected by the guard" $? 0
+rm -rf "$GUARDDIR"
 
 # ============================================================
 # Scenario 1: broken-shim / no PM -> detect logic exit 0 (all skipped)

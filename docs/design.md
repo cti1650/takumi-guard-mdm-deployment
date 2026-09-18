@@ -74,6 +74,24 @@ WSL 内の npm / pip は Linux 側のユーザー設定（`~/.npmrc` / `~/.confi
 - スキップは「保護されていないのに緑に見える」状態になり得るため、**全 MDM で同じ語彙のステータスとして可視化**します: Jamf は拡張属性の値（インベントリに格納）、Intune / Iru はコンソール出力の判定行で `Configured (npm only; pip not usable)` / `Not Applicable` 等を表示します。Smart Group の判定条件（`is Not Configured`）には影響しません
 - 設定値の比較は末尾スラッシュを除去して行います
 
+### Command Line Tools のスタブ回避
+
+macOS は **Command Line Tools (CLT) が未導入でも `/usr/bin/pip3` を同梱**しています。これは pip の実体ではなく `libxcselect` にリンクされたスタブで、`git` / `python3` などと同一 inode のハードリンクです。`command -v` は成功するため、上記の「`--version` まで実行して確認する」方式をそのまま適用すると、**スタブが起動して CLT のインストール要求ダイアログがコンソールユーザーに表示されます**。Iru の macOS スクリプトはユーザーの Aqua セッションに入って実行するため、監査のたびにダイアログが見えることになります。
+
+そのため macOS 各スクリプトの `usable()` は、`/usr/bin/pip3` / `/usr/bin/pip` に解決された場合に限り、**スタブを実行する前に有効な developer directory の有無を確認**します。
+
+| 実装 | 理由 |
+|------|------|
+| `/usr/bin/pip3` / `/usr/bin/pip` だけを対象にする | 「`/usr/bin` の全コマンドがスタブ」ではありません（`/usr/bin/stat` 等は実体）。Apple が pip として同梱するスタブはこの2つ |
+| inode 比較や `otool` でのリンク判定は使わない | inode 構成は非公開インターフェースで OS 更新で変わり得ます。また `otool` 自体が CLT 依存なので、判定のために別のスタブを踏みます |
+| `xcode-select -p` の**成功だけでは不十分**なので `-d` で実体も確認する | `xcode-select -p` は選択値を表示するだけで存在確認をしません。`DEVELOPER_DIR=/nonexistent` を与えても**そのままエコーして exit 0** を返します |
+| `DEVELOPER_DIR` を優先して読む | スタブ自身が解決するのはこの値です。macOS スクリプトはユーザーの rc / ログインプロファイルを読み込むため、rc 側で設定されている可能性があります |
+| `local` を使わず接頭辞付きの変数名（`tg_cmd_path` / `tg_dev_dir`）にする | Iru はユーザーのログインシェルで子スクリプトを実行し、`*/ksh` も許容しています。**ksh93 に `local` はありません**。接頭辞で既存の `p` / `n` / `v` / `pip` との衝突も避けています |
+
+CLT 未導入端末では pip が「対象外」= `Configured (npm only; pip not usable)` / `Not Applicable` として扱われます。これは上記のスキップ仕様どおりで、エラーではありません。
+
+> この対策が防ぐのは**スクリプト自身が `/usr/bin/pip3` を起動すること**だけです。macOS (Iru) はユーザーの `.zshrc` / `.bashrc` を読み込むため、rc 自体が `git` や `python3` を実行していれば修正後もダイアログは出ます（[切り分け手順](troubleshooting.md#macos-でコマンドラインデベロッパツールのインストールを求められる)）。
+
 ## ドリフト修正（設定が戻された場合）
 
 | MDM | 再設定の仕組み |
@@ -102,7 +120,7 @@ GitHub Actions の [verify-scripts](../.github/workflows/verify-scripts.yml) ワ
 
 **lint**（数十秒）は、ShellCheck（既定 severity。抑制は理由付きのコメントで明記）と、`.ps1` が BOM なし ASCII であること（上記「Windows の文字コード」の不変条件）を検査します。構文確認は**配布先と同じシェル**で行います。Linux の bash 5 が通す記法を macOS 同梱の bash 3.2 が弾くことがあり、CHILD 本体は実際にはユーザーのログインシェル（Catalina 以降の既定は zsh）が実行するため、macos ランナー上で bash 3.2 と zsh の両方で確認し、`.ps1` は windows ランナー上の Windows PowerShell 5.1 のパーサで確認します。
 
-**verify** は windows-latest（PowerShell 5.1）/ WSL（windows-latest 上に WSL2 の Ubuntu を登録）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。`needs` で lint に依存させており、**構文エラーで実機ランナーを 20〜30 分回さないよう lint で堰き止めます**。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
+**verify** は windows-latest（PowerShell 5.1）/ WSL（windows-latest 上に WSL2 の Ubuntu を登録）/ macos-latest の実機ランナー上で「PM不在 → 未設定 → 投入 → 設定済み → 解除」の状態遷移を E2E 検証します。macOS では加えて、[Command Line Tools のスタブ回避](#command-line-tools-のスタブ回避)ガードが全スクリプトに存在し `--version` より前に置かれていることを検査します（順序は実行結果に現れないため静的に検査）。ただし**「CLT 未導入端末でダイアログが出ない」ことはランナーでは再現できません**（ランナーには常に CLT があり `/usr/bin` は読み取り専用）。ここは CLT 未導入の実機での手動確認が必要です。`needs` で lint に依存させており、**構文エラーで実機ランナーを 20〜30 分回さないよう lint で堰き止めます**。詳細は [トラブルシューティング](troubleshooting.md) と README の CI セクションを参照。
 
 ---
 
