@@ -42,6 +42,19 @@ asdf set -u python <version>   # asdf の例
 
 スキップの発生は全 MDM で同じ語彙で確認できます: Jamf なら拡張属性の値、Intune / Iru ならコンソール出力の判定行（`COMPLIANT: Configured (npm only; pip not usable)` / `COMPLIANT: Not Applicable (no usable package manager)` 等）で表示されます。
 
+### macOS で「コマンドラインデベロッパツール」のインストールを求められる
+
+macOS は Command Line Tools (CLT) 未導入でも `/usr/bin/pip3` をスタブとして同梱しており、可否確認のつもりで実行するとインストール要求ダイアログが出ます。スクリプト側は**スタブを実行する前に developer directory の有無を確認**してこれを回避しています（[設計方針](design.md#command-line-tools-のスタブ回避) 参照）。CLT 未導入端末で pip が「対象外」になるのはこの仕様どおりで、エラーではありません。
+
+対策後もダイアログが出る場合、発生源はスクリプトではなくユーザーの shell 設定です。macOS (Iru) は PATH 解決のため `.zshrc` / `.bashrc` を読み込むので、**rc 自体が `git` / `python3` / `xcrun` を実行していれば**そこから出ます。切り分け:
+
+```bash
+# rc を読まずにスクリプトのロジックだけを動かし、ダイアログが出るか確認する
+env -i HOME=$(mktemp -d) PATH=/usr/bin:/bin /bin/zsh -l -c 'command -v pip3'
+```
+
+これでダイアログが出なければスクリプト側は対策済みで、原因は rc 側です。該当端末で `git` や `python3` を呼んでいる行を探すか、CLT を導入してください。
+
 ### uv / poetry / yarn / pnpm / bun は保護される？
 
 されません。対象は npm と pip のみです。特に uv は pip の設定を参照しないため、別途対応が必要です（[設計方針](design.md#設定値固定) 参照）。

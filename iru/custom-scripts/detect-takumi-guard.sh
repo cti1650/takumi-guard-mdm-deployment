@@ -73,7 +73,18 @@ elif [ -n "${BASH_VERSION:-}" ]; then
     [ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc" >/dev/null 2>&1
 fi
 export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
-usable() { command -v "$1" >/dev/null 2>&1 && "$1" --version >/dev/null 2>&1; }
+# /usr/bin/pip3 can be an xcode-select stub: probing one with --version is what
+# pops the developer-tools install dialog at the console user. See
+# docs/design.md#command-line-tools-のスタブ回避 for why the check is this shape.
+usable() {
+    tg_cmd_path=$(command -v "$1" 2>/dev/null) || return 1
+    case "$tg_cmd_path" in
+        /usr/bin/pip3|/usr/bin/pip)
+            tg_dev_dir=${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p 2>/dev/null)}
+            [ -n "$tg_dev_dir" ] && [ -d "$tg_dev_dir" ] || return 1 ;;
+    esac
+    "$1" --version >/dev/null 2>&1
+}
 val() { "$@" 2>/dev/null | tr -d '[:space:]'; }
 
 n=skip
