@@ -76,10 +76,12 @@ export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 # /usr/bin/pip3 can be an xcode-select stub: probing one with --version is what
 # pops the developer-tools install dialog at the console user. See
 # docs/design.md#command-line-tools-のスタブ回避 for why the check is this shape.
+# Balanced-paren case pattern: macOS bash 3.2 cannot parse an unbalanced ")"
+# inside $(...) command substitution.
 usable() {
     tg_cmd_path=$(command -v "$1" 2>/dev/null) || return 1
     case "$tg_cmd_path" in
-        /usr/bin/pip3|/usr/bin/pip)
+        (/usr/bin/pip3|/usr/bin/pip)
             tg_dev_dir=${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p 2>/dev/null)}
             [ -n "$tg_dev_dir" ] && [ -d "$tg_dev_dir" ] || return 1 ;;
     esac
